@@ -1,0 +1,94 @@
+# values.yaml - Varsayılan Değerler
+
+replicaCount: 1
+
+imagePullSecrets: []
+# - name: myregistrykey
+
+frontend:
+  image:
+    repository: yourdockerhubusername/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    pullPolicy: IfNotPresent
+    # tag: "" # CI/CD tarafından override edilecek
+  replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir
+  service:
+    type: NodePort
+    port: 80 # Service'in dinleyeceği port
+    targetPort: 80 # Frontend container'ının (Nginx) dinlediği port
+    nodePort: 30080 # Dışarıdan erişim için NodePort
+  resources: {}
+  #  requests:
+  #    cpu: 100m
+  #    memory: 128Mi
+  #  limits:
+  #    cpu: 500m
+  #    memory: 256Mi
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+backend:
+  image:
+    repository: yourdockerhubusername/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    pullPolicy: IfNotPresent
+    # tag: "" # CI/CD tarafından override edilecek
+  replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir
+  service:
+    type: ClusterIP
+    port: 5000 # Service'in dinleyeceği port
+    targetPort: 5000 # Backend container'ının dinlediği port
+  # Ortam değişkenleri. Secret'lardan almak daha güvenlidir.
+  env:
+    MONGO_URL: "mongodb://myapp-mongodb:27017/myappdb" # MongoDB service adına göre ayarla
+    # EXAMPLE_VAR: "example_value"
+  resources: {}
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 15
+
+mongodb:
+  image:
+    repository: mongo
+    tag: "6.0" # İstediğiniz bir MongoDB versiyonu
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    name: myapp-mongodb # Backend'in bağlanacağı service adı
+    type: ClusterIP
+    port: 27017
+    targetPort: 27017
+  # MongoDB için kullanıcı adı ve şifre. KESİNLİKLE Secret ile yönetilmeli!
+  # auth:
+  #   rootUser: ""
+  #   rootPassword: ""
+  #   username: ""
+  #   password: ""
+  #   database: "myappdb"
+  persistence:
+    enabled: true
+    # storageClass: "-" # "-" varsayılan storage class'ı kullanır.
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi # Ortam bazlı values dosyasında override edilebilir
+  resources: {}
+  #  requests:
+  #    cpu: 100m
+  #    memory: 256Mi
