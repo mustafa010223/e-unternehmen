@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "myapp.fullname" . }}-backend
+  labels:
+    {{- include "myapp.labels" . | nindent 8 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "myapp.selectorLabels" . | nindent 10 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "myapp.selectorLabels" . | nindent 12 }}
+        app.kubernetes.io/component: backend
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 10 }}
+      {{- end }}
+      serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      securityContext:
+        {}
+      containers:
+        - name: backend
+          securityContext:
+            {}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: MONGO_URL
+              value: {{ .Values.backend.env.MONGO_URL }}
+            # Ek ortam değişkenleri buraya eklenebilir
+            # - name: DATABASE_USER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: {{ include "myapp.fullname" . }}-mongodb
+            #       key: mongodb-username
+          livenessProbe:
+            {{- toYaml .Values.backend.livenessProbe | nindent 16 }}
+          readinessProbe:
+            {{- toYaml .Values.backend.readinessProbe | nindent 16 }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 16 }}
