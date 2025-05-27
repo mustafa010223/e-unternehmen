@@ -8,7 +8,7 @@
     # Eğer ansible klasörü proje kök dizinindeyse ve helm klasörü de kök dizindeyse:
     helm_chart_path: "{{ playbook_dir }}/../helm"
     release_name: myapp
-    namespace: myapp # Uygulamanın deploy edileceği namespace
+    namespace: myapp # Uygulamanın deploy edileceği namespace.
     #
     # Bu değişkenler GitHub Actions tarafından --extra-vars ile playbook'a aktarılacak:
     # helm_env: "staging" veya "production"
