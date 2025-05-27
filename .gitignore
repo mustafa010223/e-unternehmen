@@ -119,4 +119,5 @@ public
 # Terraform files
 .terraform/
 *.tfstate
-*.tfstate.backup
+*.tfstate.backupfrontend/package-lock.json
+backend/package-lock.json
