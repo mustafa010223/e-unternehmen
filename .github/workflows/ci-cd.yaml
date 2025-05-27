@@ -10,7 +10,7 @@ on:
       - main
       - develop
   workflow_dispatch: # Manuel tetikleme için
-
+  
 env:
   DOCKERHUB_USERNAME: meyfcsalik # KENDİ DOCKER HUB KULLANICI ADINLA KONTROL ET/DEĞİŞTİR
   K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # K3S SUNUCU KULLANICI ADIN VE PROJE YOLUNU KONTROL ET
