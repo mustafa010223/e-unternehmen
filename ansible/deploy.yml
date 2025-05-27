@@ -13,11 +13,13 @@
     docker_username_default: "meyfcsalik" # Kendi Docker Hub kullanıcı adınızla kontrol edin
 
   pre_tasks:
-    - name: Temel sistem paketlerinin kurulu olduğundan emin ol (python3, pip)
+    - name: Temel sistem paketlerinin kurulu olduğundan emin ol (python3, pip, curl, gnupg)
       ansible.builtin.apt:
         name:
           - python3
           - python3-pip
+          - curl
+          - gnupg # Helm GPG anahtarı için
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
@@ -58,17 +60,18 @@
       ansible.builtin.wait_for:
         path: /etc/rancher/k3s/k3s.yaml
         state: present
-        timeout: 60
-      when: k3s_install_result.changed
+        timeout: 60 # K3s'in dosyayı oluşturması için bekleme süresi
+        delay: 5 # İlk kontrolden önce 5 saniye bekle
+      when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed) # K3s yeni kurulduysa veya zaten kuruluysa ve dosya yoksa da bekle
 
     # --- HELM KURULUMU ---
     - name: Helm için gerekli sistem paketlerini kur (curl, gnupg)
       ansible.builtin.apt:
         name:
           - curl
-          - gnupg # Helm GPG anahtarı için
+          - gnupg
         state: present
-        update_cache: yes # Bu adımda cache güncellenir
+        update_cache: yes
       when: ansible_os_family == "Debian"
 
     - name: Helm GPG anahtarını indir ve ekle
@@ -99,6 +102,7 @@
 
     - name: Kubernetes namespace oluştur (varsa hata verme)
       kubernetes.core.k8s:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml # <-- DEĞİŞİKLİK BURADA
         name: "{{ namespace }}"
         api_version: v1
         kind: Namespace
