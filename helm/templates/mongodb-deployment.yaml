@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.mongodb.service.name }} # values.yaml'daki service adıyla eşleşmeli
+  labels:
+    {{- include "myapp.labels" . | nindent 8 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  replicas: {{ .Values.mongodb.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "myapp.selectorLabels" . | nindent 10 }}
+      app.kubernetes.io/component: mongodb
+  template:
+    metadata:
+      labels:
+        {{- include "myapp.selectorLabels" . | nindent 12 }}
+        app.kubernetes.io/component: mongodb
+    spec:
+      serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      securityContext:
+        {}
+      containers:
+        - name: mongodb
+          image: "{{ .Values.mongodb.image.repository }}:{{ .Values.mongodb.image.tag }}"
+          imagePullPolicy: {{ .Values.mongodb.image.pullPolicy }}
+          ports:
+            - name: mongodb
+              containerPort: {{ .Values.mongodb.service.targetPort }}
+              protocol: TCP
+          # env: # MongoDB auth için secret'lar kullanılmalı
+          #   - name: MONGO_INITDB_ROOT_USERNAME
+          #     valueFrom:
+          #       secretKeyRef:
+          #         name: {{ .Values.mongodb.service.name }} # veya farklı bir secret adı
+          #         key: mongodb-root-username
+          #   - name: MONGO_INITDB_ROOT_PASSWORD
+          #     valueFrom:
+          #       secretKeyRef:
+          #         name: {{ .Values.mongodb.service.name }}
+          #         key: mongodb-root-password
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+          resources:
+            {{- toYaml .Values.mongodb.resources | nindent 16 }}
+      volumes:
+        - name: mongodb-data
+          {{- if .Values.mongodb.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.mongodb.service.name }}-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
