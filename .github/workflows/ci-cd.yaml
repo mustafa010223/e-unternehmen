@@ -26,21 +26,32 @@ jobs:
       docker_repo_backend: ${{ env.DOCKERHUB_USERNAME }}/backend
     services:
       mongodb_test: # Backend testleri için MongoDB servisi
-        image: mongo:6.0 # Belirli bir versiyon kullanmak daha iyidir
+        image: mongo:6.0
         ports:
           - 27017:27017
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Debug GitHub Context
+        run: |
+          echo "Event Name: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref Type: ${{ github.ref_type }}"
+          echo "Ref Name: ${{ github.ref_name }}"
+          echo "Head Ref: ${{ github.head_ref }}"
+          echo "Base Ref: ${{ github.base_ref }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Triggering Actor: ${{ github.triggering_actor }}"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # Projenize uygun LTS Node.js versiyonu
+          node-version: '18'
           cache: 'npm'
-          # cache-dependency-path: | # <--- BU SATIRLAR YORUM SATIRI YAPILDI/SİLİNDİ
-          #   frontend/package-lock.json
-          #   backend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
 
       - name: Set Output Variables (Commit SHA)
         id: vars
@@ -53,7 +64,13 @@ jobs:
             echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-          else # PRs veya diğer branch'ler için varsayılan
+          elif [[ "${{ github.base_ref }}" == "main" && "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR to main, treat as production for build/test but not deploy
+            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.base_ref }}" == "develop" && "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR to develop, treat as staging for build/test but not deploy
+            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
+          else # Other PRs or branches default to staging for build/test
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
         shell: bash
@@ -62,7 +79,7 @@ jobs:
       - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
         run: |
-          npm install # <--- DEĞİŞTİ (npm ci yerine)
+          npm install
           npm run lint --if-present
       - name: Frontend - Run Tests
         working-directory: ./frontend
@@ -75,47 +92,46 @@ jobs:
       - name: Backend - Install Dependencies & Lint
         working-directory: ./backend
         run: |
-          npm install # <--- DEĞİŞTİ (npm ci yerine)
+          npm install
           npm run lint --if-present
       - name: Backend - Run Tests
         working-directory: ./backend
         run: npm test --if-present -- --watchAll=false --coverage
         env:
-          MONGO_URL: mongodb://mongodb_test:27017/myapp_test # Test DB bağlantısı
+          MONGO_URL: mongodb://mongodb_test:27017/myapp_test
 
       # --- Security Scans ---
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }} # Ana branch'e göre tarama
-          head: HEAD
-          # extra_args: --debug # Gerekirse debug için
+          base: ${{ github.event.pull_request.base.sha || github.event.before || github.event.repository.default_branch }}
+          head: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Audit NPM Dependencies (Frontend)
         working-directory: ./frontend
-        # Zafiyet bulunsa bile devam et, ama logla
         run: npm audit --audit-level=high || echo "NPM audit (frontend) found vulnerabilities, but continuing."
 
       - name: Audit NPM Dependencies (Backend)
         working-directory: ./backend
         run: npm audit --audit-level=high || echo "NPM audit (backend) found vulnerabilities, but continuing."
 
-      # --- Docker Build and Push (Sadece main/develop branch push'larında) ---
+      # --- Docker Build and Push ---
+      # 'if' koşulları test amacıyla kaldırıldı
       - name: Log in to Docker Hub
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        # if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }} # GitHub Secret'tan alınacak
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Frontend Docker Image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        # if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
-          push: true
+          push: true # Test için push'u aktif bırakıyoruz
           tags: |
             ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
@@ -124,12 +140,12 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build and Push Backend Docker Image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        # if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
-          push: true
+          push: true # Test için push'u aktif bırakıyoruz
           tags: |
             ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
@@ -139,70 +155,64 @@ jobs:
 
   deploy:
     name: Deploy to K3s using Ansible
-    needs: test-and-build # 'test-and-build' job'ı bittikten sonra başlar
-    # Sadece main veya develop branch'ine push yapıldığında çalışır
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    needs: test-and-build
+    # 'if' koşulu test amacıyla kaldırıldı. DİKKAT: Bu, PR'lar merge edilmeden de deploy yapar!
+    # if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
-    environment: # GitHub Environments ile entegrasyon
+    environment:
       name: ${{ needs.test-and-build.outputs.deploy_env }}
-      # url: http://<your-k3s-node-ip>:30080 # Uygulamanızın URL'i, manuel olarak ayarlanabilir
+      # url: http://<your-k3s-node-ip>:30080
     steps:
       - name: Checkout Repository (Ansible playbook ve Helm chart'ları için)
         uses: actions/checkout@v4
 
+      - name: Debug GitHub Context for Deploy
+        run: |
+          echo "Event Name: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref Type: ${{ github.ref_type }}"
+          echo "Ref Name: ${{ github.ref_name }}"
+          echo "Deploy Env from Build Job: ${{ needs.test-and-build.outputs.deploy_env }}"
+          echo "Image Tag from Build Job: ${{ needs.test-and-build.outputs.image_tag }}"
+
       - name: Deploy to K3s via SSH using Ansible
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.K3S_HOST_IP }} # GitHub Secret'tan alınacak
-          username: ${{ secrets.K3S_USER }} # GitHub Secret'tan alınacak
-          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }} # GitHub Secret'tan alınacak
+          host: ${{ secrets.K3S_HOST_IP }}
+          username: ${{ secrets.K3S_USER }}
+          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
           script: |
             echo "Changing directory to ${{ env.K3S_SERVER_PROJECT_PATH }}"
             cd ${{ env.K3S_SERVER_PROJECT_PATH }}
-            echo "Checking out branch ${{ github.ref_name }}"
-            git checkout ${{ github.ref_name }}
-            echo "Pulling latest changes for branch ${{ github.ref_name }}"
-            git pull origin ${{ github.ref_name }}
+            echo "Checking out branch/ref ${{ github.ref_name || github.ref }}" # PR merge sonrası github.ref_name boş olabilir, github.ref daha güvenilir
+            # PR merge sonrası checkout için HEAD sha daha güvenli olabilir veya doğrudan branch adı
+            # Eğer PR merge ise, github.ref refs/heads/<target_branch> şeklinde olur
+            # Eğer doğrudan push ise, github.ref refs/heads/<pushed_branch> şeklinde olur
+            # Aşağıdaki satır PR merge durumlarında sorun çıkarabilir, push durumlarında doğru çalışır.
+            # git checkout ${{ github.ref_name }}
+            # Daha güvenli bir yaklaşım:
+            git fetch origin ${{ github.ref }} # Hedef ref'i çek
+            git checkout ${{ github.sha }}     # Tam commit hash'ini checkout et
+
+            # VEYA eğer her zaman hedef branch'in son halini istiyorsak:
+            # target_branch=""
+            # if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            #   target_branch="main"
+            # elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            #   target_branch="develop"
+            # else
+            #   echo "Cannot determine target branch from ref: ${{ github.ref }}"
+            #   # Belki burada bir hata ile çıkmak daha iyi olur. Şimdilik develop varsayalım veya PR base ref'i alalım.
+            #   target_branch="${{ github.base_ref || 'develop' }}" # PR ise base_ref, değilse develop
+            # fi
+            # echo "Checking out branch $target_branch"
+            # git checkout $target_branch
+            # echo "Pulling latest changes for branch $target_branch"
+            # git pull origin $target_branch
+
+
             echo "Running Ansible playbook for environment: ${{ needs.test-and-build.outputs.deploy_env }}, image_tag: ${{ needs.test-and-build.outputs.image_tag }}"
             ansible-playbook ansible/deploy.yml --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} image_tag=${{ needs.test-and-build.outputs.image_tag }} docker_username=${{ env.DOCKERHUB_USERNAME }}"
 
       # Slack bildirim adımları yorum satırı yapıldı
-      # - name: Slack Notification on Success
-      #   if: success()
-      #   uses: slackapi/slack-github-action@v1.26.0
-      #   with:
-      #     payload: |
-      #       {
-      #         "text": "✅ *Deployment Successful to ${{ needs.test-and-build.outputs.deploy_env }}!*",
-      #         "blocks": [
-      #           {
-      #             "type": "section",
-      #             "text": {
-      #               "type": "mrkdwn",
-      #               "text": "✅ *Deployment Successful!* \n🌐 Environment: `${{ needs.test-and-build.outputs.deploy_env }}` \n📦 Commit: `${{ github.sha }}` \n🏷️ Image Tag: `${{ needs.test-and-build.outputs.image_tag }}` \n🔗 <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|View Commit>"
-      #             }
-      #           }
-      #         ]
-      #       }
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      # - name: Slack Notification on Failure
-      #   if: failure()
-      #   uses: slackapi/slack-github-action@v1.26.0
-      #   with:
-      #     payload: |
-      #       {
-      #         "text": "❌ *Deployment Failed to ${{ needs.test-and-build.outputs.deploy_env }}!*",
-      #         "blocks": [
-      #           {
-      #             "type": "section",
-      #             "text": {
-      #               "type": "mrkdwn",
-      #               "text": "❌ *Deployment Failed!* \n🌐 Environment: `${{ needs.test-and-build.outputs.deploy_env }}` \n📦 Commit: `${{ github.sha }}` \n🔗 <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
-      #             }
-      #           }
-      #         ]
-      #       }
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      # ... (önceki gibi)
