@@ -127,3 +127,5 @@ build/ # Genel 'build' klasörlerini yok sayar. Eğer frontend/build commit edil
 # Swap files from editors like Vim/Nano
 *.swp
 *~
+actions-runner/
+
