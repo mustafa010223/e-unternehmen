@@ -80,25 +80,28 @@ web_modules/
 .parcel-cache
 
 # Next.js build output
-.next
+.next/
 out/
 
 # Nuxt.js build output
-.nuxt
+.nuxt/
 dist/
 
 # SvelteKit build output
-.svelte-kit
-build/
+.svelte-kit/
+build/ # Genel 'build' klasörlerini yok sayar. Eğer frontend/build commit edilecekse bu satır düzenlenmeli.
+      # Bizim Dockerfile'ımız build işlemini container içinde yaptığı için,
+      # yereldeki 'frontend/build' klasörünü commit etmemize gerek yok.
 
 # Docusaurus build output
-.docusaurus
+.docusaurus/
 
 # Gatsby files
-.cache/
-# Comment in the public line in if your project uses Gatsby and not Next.js
-# https://nextjs.org/blog/next-9-1#public-directory-support
-public
+# .cache/ # Zaten yukarıda .cache var
+# public # Bu satır, frontend/public/index.html'in yok sayılmasına neden oluyordu, bu yüzden yorumlandı veya silindi.
+         # Eğer projenizde başka bir 'public' klasörünü bilerek yok saymak istemiyorsanız,
+         # bu satırı tamamen kaldırın veya daha spesifik hale getirin.
+         # Örneğin: gatsby-public/
 
 # VuePress build output
 .vuepress/dist
@@ -119,7 +122,8 @@ public
 # Terraform files
 .terraform/
 *.tfstate
-*.tfstate.backupfrontend/package-lock.json
-backend/package-lock.json
-frontend/package-lock.json
-backend/package-lock.json
+*.tfstate.backup
+
+# Swap files from editors like Vim/Nano
+*.swp
+*~
