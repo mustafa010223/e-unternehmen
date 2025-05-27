@@ -18,7 +18,7 @@
     # Playbook'un manuel çalıştırılması ihtimaline karşı varsayılan değerler (opsiyonel):
     helm_env_default: "staging"
     image_tag_default: "latest"
-    docker_username_default: "yourdockerhubusername" # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    docker_username_default: "meyfcsalik" # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİRİLDİ
 
   tasks:
     - name: Gerekli değişkenlerin tanımlandığından emin ol
@@ -54,12 +54,40 @@
         timeout: 60
       when: k3s_install_result.changed
 
-    - name: Helm kurulumu (sadece kurulu değilse - Debian/Ubuntu için)
+    # --- YENİ HELM KURULUM ADIMLARI ---
+    - name: Helm için gerekli paketlerin kurulu olduğundan emin ol (curl, gpg)
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gpg # Ubuntu için gpg genellikle gnupg paketini de içerir veya yeterlidir.
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian" # veya ansible_distribution == "Ubuntu"
+      become: true # Bu paketlerin kurulumu sudo gerektirir
+
+    - name: Helm GPG anahtarını indir ve ekle
+      ansible.builtin.shell: >
+        curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg
+      args:
+        creates: /usr/share/keyrings/helm.gpg # Bu dosya varsa, komut çalışmaz
+      become: true # gpg --dearmor -o için sudo gerekebilir
+
+    - name: Helm apt deposunu ekle
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture }} signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main"
+        state: present
+        filename: helm-stable-debian # /etc/apt/sources.list.d/ altına bu isimle dosya oluşturur
+        update_cache: yes # Depo eklendikten sonra apt cache'i güncelle
+      become: true
+      when: ansible_os_family == "Debian"
+
+    - name: Helm'i apt ile kur (depo eklendikten sonra)
       ansible.builtin.apt:
         name: helm
         state: present
+      become: true
       when: ansible_os_family == "Debian"
-      # Diğer işletim sistemleri için farklı bir paket yöneticisi veya kurulum metodu gerekebilir.
+    # --- YENİ HELM KURULUM ADIMLARI SONU ---
 
     - name: Kubernetes namespace oluştur (varsa hata verme)
       kubernetes.core.k8s:
@@ -108,9 +136,15 @@
         -f {{ helm_chart_path }}/values-{{ helm_env | default(helm_env_default) }}.yaml
         --kubeconfig /etc/rancher/k3s/k3s.yaml
       register: helm_deploy_result
-      changed_when: "'release {{ release_name }} has been upgraded' in helm_deploy_result.stdout or 'deployed' in helm_deploy_result.stdout"
+      changed_when: "'release {{ release_name }} has been upgraded' in helm_deploy_result.stdout or 'deployed' in helm_deploy_result.stdout or 'pending-install' in helm_deploy_result.stderr or 'pending-upgrade' in helm_deploy_result.stderr"
       failed_when: helm_deploy_result.rc != 0
 
     - name: Helm deploy sonucunu göster (debug için)
       ansible.builtin.debug:
         var: helm_deploy_result.stdout_lines
+      when: helm_deploy_result.stdout_lines is defined and helm_deploy_result.stdout_lines | length > 0
+
+    - name: Helm deploy hata çıktısını göster (debug için)
+      ansible.builtin.debug:
+        var: helm_deploy_result.stderr_lines
+      when: helm_deploy_result.stderr_lines is defined and helm_deploy_result.stderr_lines | length > 0
