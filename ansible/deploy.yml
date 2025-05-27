@@ -13,21 +13,17 @@
     docker_username_default: "meyfcsalik" # Kendi Docker Hub kullanıcı adınızla kontrol edin
 
   pre_tasks:
-    - name: Temel sistem paketlerinin kurulu olduğundan emin ol (python3, pip, curl, gnupg)
+    - name: Temel sistem güncellemelerini yap ve gerekli paketleri kur (python3, pip, curl, gnupg, ansible)
       ansible.builtin.apt:
         name:
           - python3
-          - python3-pip
+          - python3-pip # Bazı ansible modülleri için faydalı olabilir
           - curl
           - gnupg # Helm GPG anahtarı için
+          - ansible # Ansible'ı doğrudan apt ile kuruyoruz
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
-
-    - name: Ansible'ın pip ile kurulu olduğundan emin ol
-      ansible.builtin.pip:
-        name: ansible # ansible-core da olabilir, sisteminize göre
-        state: present
 
   tasks:
     - name: Gerekli değişkenlerin tanımlandığından emin ol
@@ -62,17 +58,10 @@
         state: present
         timeout: 60 # K3s'in dosyayı oluşturması için bekleme süresi
         delay: 5 # İlk kontrolden önce 5 saniye bekle
-      when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed) # K3s yeni kurulduysa veya zaten kuruluysa ve dosya yoksa da bekle
+      when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed)
 
     # --- HELM KURULUMU ---
-    - name: Helm için gerekli sistem paketlerini kur (curl, gnupg)
-      ansible.builtin.apt:
-        name:
-          - curl
-          - gnupg
-        state: present
-        update_cache: yes
-      when: ansible_os_family == "Debian"
+    # Helm için gerekli sistem paketleri (curl, gnupg) zaten pre_tasks içinde kuruluyor.
 
     - name: Helm GPG anahtarını indir ve ekle
       ansible.builtin.shell: >
@@ -102,7 +91,7 @@
 
     - name: Kubernetes namespace oluştur (varsa hata verme)
       kubernetes.core.k8s:
-        kubeconfig: /etc/rancher/k3s/k3s.yaml # <-- DEĞİŞİKLİK BURADA
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
         name: "{{ namespace }}"
         api_version: v1
         kind: Namespace
