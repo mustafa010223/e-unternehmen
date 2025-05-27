@@ -12,8 +12,8 @@ on:
   workflow_dispatch: # Manuel tetikleme için
 
 env:
-  DOCKERHUB_USERNAME: meyfcsalik # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
-  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # K3S SUNUCU KULLANICI ADIN VE PROJE YOLUNU GÜNCELLE
+  DOCKERHUB_USERNAME: meyfcsalik # KENDİ DOCKER HUB KULLANICI ADINLA KONTROL ET/DEĞİŞTİR
+  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # K3S SUNUCU KULLANICI ADIN VE PROJE YOLUNU KONTROL ET
 
 jobs:
   test-and-build:
@@ -26,7 +26,7 @@ jobs:
       docker_repo_backend: ${{ env.DOCKERHUB_USERNAME }}/backend
     services:
       mongodb_test: # Backend testleri için MongoDB servisi
-        image: mongo:6.0
+        image: mongo:6.0 # Belirli bir versiyon kullanmak daha iyidir
         ports:
           - 27017:27017
     steps:
@@ -36,10 +36,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # Projenize uygun Node.js versiyonu
+          node-version: '18' # Projenize uygun LTS Node.js versiyonu
           cache: 'npm'
+          # cache-dependency-path: | # <--- BU SATIRLAR YORUM SATIRI YAPILDI/SİLİNDİ
+          #   frontend/package-lock.json
+          #   backend/package-lock.json
 
-      - name: Set Output Variables (Commit SHA, Environment Name)
+      - name: Set Output Variables (Commit SHA)
         id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
@@ -50,7 +53,7 @@ jobs:
             echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-          else # PRs or other branches default to staging for build/test
+          else # PRs veya diğer branch'ler için varsayılan
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
         shell: bash
@@ -59,7 +62,7 @@ jobs:
       - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
         run: |
-          npm ci
+          npm install # <--- DEĞİŞTİ (npm ci yerine)
           npm run lint --if-present
       - name: Frontend - Run Tests
         working-directory: ./frontend
@@ -72,7 +75,7 @@ jobs:
       - name: Backend - Install Dependencies & Lint
         working-directory: ./backend
         run: |
-          npm ci
+          npm install # <--- DEĞİŞTİ (npm ci yerine)
           npm run lint --if-present
       - name: Backend - Run Tests
         working-directory: ./backend
@@ -80,17 +83,18 @@ jobs:
         env:
           MONGO_URL: mongodb://mongodb_test:27017/myapp_test # Test DB bağlantısı
 
-      # --- Security Scans (Örnekler) ---
+      # --- Security Scans ---
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
+          base: ${{ github.event.repository.default_branch }} # Ana branch'e göre tarama
           head: HEAD
-          extra_args: --debug
+          # extra_args: --debug # Gerekirse debug için
 
       - name: Audit NPM Dependencies (Frontend)
         working-directory: ./frontend
+        # Zafiyet bulunsa bile devam et, ama logla
         run: npm audit --audit-level=high || echo "NPM audit (frontend) found vulnerabilities, but continuing."
 
       - name: Audit NPM Dependencies (Backend)
@@ -139,9 +143,9 @@ jobs:
     # Sadece main veya develop branch'ine push yapıldığında çalışır
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
-    environment: # GitHub Environments ile entegrasyon (manuel onay için ayarlanabilir)
+    environment: # GitHub Environments ile entegrasyon
       name: ${{ needs.test-and-build.outputs.deploy_env }}
-      # url: http://<your-k3s-node-ip>:30080 # Uygulamanızın URL'i
+      # url: http://<your-k3s-node-ip>:30080 # Uygulamanızın URL'i, manuel olarak ayarlanabilir
     steps:
       - name: Checkout Repository (Ansible playbook ve Helm chart'ları için)
         uses: actions/checkout@v4
@@ -153,14 +157,19 @@ jobs:
           username: ${{ secrets.K3S_USER }} # GitHub Secret'tan alınacak
           key: ${{ secrets.K3S_SSH_PRIVATE_KEY }} # GitHub Secret'tan alınacak
           script: |
+            echo "Changing directory to ${{ env.K3S_SERVER_PROJECT_PATH }}"
             cd ${{ env.K3S_SERVER_PROJECT_PATH }}
-            git checkout ${{ github.ref_name }} # Doğru branch'i checkout et
+            echo "Checking out branch ${{ github.ref_name }}"
+            git checkout ${{ github.ref_name }}
+            echo "Pulling latest changes for branch ${{ github.ref_name }}"
             git pull origin ${{ github.ref_name }}
+            echo "Running Ansible playbook for environment: ${{ needs.test-and-build.outputs.deploy_env }}, image_tag: ${{ needs.test-and-build.outputs.image_tag }}"
             ansible-playbook ansible/deploy.yml --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} image_tag=${{ needs.test-and-build.outputs.image_tag }} docker_username=${{ env.DOCKERHUB_USERNAME }}"
 
+      # Slack bildirim adımları yorum satırı yapıldı
       # - name: Slack Notification on Success
       #   if: success()
-      #   uses: slackapi/slack-github-action@v1.26.0 # Veya güncel versiyon
+      #   uses: slackapi/slack-github-action@v1.26.0
       #   with:
       #     payload: |
       #       {
@@ -176,11 +185,11 @@ jobs:
       #         ]
       #       }
       #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # GitHub Secret'tan alınacak
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       # - name: Slack Notification on Failure
       #   if: failure()
-      #   uses: slackapi/slack-github-action@v1.26.0 # Veya güncel versiyon
+      #   uses: slackapi/slack-github-action@v1.26.0
       #   with:
       #     payload: |
       #       {
