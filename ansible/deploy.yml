@@ -13,23 +13,19 @@
     docker_username_default: "meyfcsalik" # Kendi Docker Hub kullanıcı adınızla kontrol edin
 
   pre_tasks:
-    - name: Temel sistem güncellemelerini yap ve gerekli paketleri kur (python3, pip, curl, gnupg)
+    - name: Temel sistem paketlerinin kurulu olduğundan emin ol (python3, pip)
       ansible.builtin.apt:
         name:
           - python3
           - python3-pip
-          - curl
-          - gnupg # Helm GPG anahtarı için
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
 
     - name: Ansible'ın pip ile kurulu olduğundan emin ol
       ansible.builtin.pip:
-        name: ansible
+        name: ansible # ansible-core da olabilir, sisteminize göre
         state: present
-      # Not: 'become: true' pip modülü için genellikle gerekmez,
-      # ancak sistem geneli bir kurulum için veya izin sorunları olursa eklenebilir.
 
   tasks:
     - name: Gerekli değişkenlerin tanımlandığından emin ol
@@ -66,12 +62,20 @@
       when: k3s_install_result.changed
 
     # --- HELM KURULUMU ---
+    - name: Helm için gerekli sistem paketlerini kur (curl, gnupg)
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gnupg # Helm GPG anahtarı için
+        state: present
+        update_cache: yes # Bu adımda cache güncellenir
+      when: ansible_os_family == "Debian"
+
     - name: Helm GPG anahtarını indir ve ekle
       ansible.builtin.shell: >
         curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg
       args:
         creates: /usr/share/keyrings/helm.gpg
-      # become: true # Zaten genel become: true altında
 
     - name: Helm apt deposunu ekle
       ansible.builtin.apt_repository:
@@ -114,15 +118,17 @@
         --set backend.image.repository={{ docker_username | default(docker_username_default) }}/backend
         --set backend.image.tag={{ image_tag | default(image_tag_default) }}
         -f {{ helm_chart_path }}/values.yaml
-        {{ "-f " + helm_chart_path + "/values-" + (helm_env | default(helm_env_default)) + ".yaml" if values_file.stat.exists else "" }}
+        {{ ("-f " + helm_chart_path + "/values-" + (helm_env | default(helm_env_default)) + ".yaml") if values_file.stat.exists else "" }}
         --kubeconfig /etc/rancher/k3s/k3s.yaml
       register: helm_deploy_result
       changed_when: >
         "'has been upgraded' in helm_deploy_result.stdout or
          'deployed' in helm_deploy_result.stdout or
          'pending' in helm_deploy_result.stderr"
-      failed_when: helm_deploy_result.rc != 0 or ("Error" in helm_deploy_result.stderr and "Error: context deadline exceeded" not in helm_deploy_result.stderr)
-      # "context deadline exceeded" hatasını bazen Helm ilk deploy'da verebilir ama yine de başarılı olabilir.,
+      failed_when: >
+        (helm_deploy_result.rc != 0 or
+         ("Error" in helm_deploy_result.stderr and
+         "Error: context deadline exceeded" not in helm_deploy_result.stderr))
 
     - name: Helm deploy sonucunu göster
       ansible.builtin.debug:
