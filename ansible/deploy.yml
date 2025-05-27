@@ -1,24 +1,35 @@
+# ansible/deploy.yml
 - name: K3s ve Uygulama Dağıtımı (Ortam Bazlı)
-  hosts: localhost # K3s sunucusunda veya kubectl'in K3s'e erişebildiği bir yerde çalıştırıldığı varsayılır
-  connection: local # Ansible'ın doğrudan yerelde komutları çalıştırması için
-  become: true # K3s kurulumu ve bazı kubectl/helm komutları için sudo gerekebilir
+  hosts: localhost
+  connection: local
+  become: true # Çoğu görev sudo gerektirecek
 
   vars:
-    # helm_chart_path: playbook_dir'e göre ayarlanır.
-    # Eğer ansible klasörü proje kök dizinindeyse ve helm klasörü de kök dizindeyse:
     helm_chart_path: "{{ playbook_dir }}/../helm"
     release_name: myapp
-    namespace: myapp # Uygulamanın deploy edileceği namespace.
-    #
-    # Bu değişkenler GitHub Actions tarafından --extra-vars ile playbook'a aktarılacak:
-    # helm_env: "staging" veya "production"
-    # image_tag: "commit_sha" veya "latest"
-    # docker_username: "yourdockerhubusername"
-    #
-    # Playbook'un manuel çalıştırılması ihtimaline karşı varsayılan değerler (opsiyonel):
+    namespace: myapp
     helm_env_default: "staging"
     image_tag_default: "latest"
-    docker_username_default: "meyfcsalik" # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİRİLDİ
+    docker_username_default: "meyfcsalik" # Kendi Docker Hub kullanıcı adınızla kontrol edin
+
+  pre_tasks:
+    - name: Temel sistem güncellemelerini yap ve gerekli paketleri kur (python3, pip, curl, gnupg)
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-pip
+          - curl
+          - gnupg # Helm GPG anahtarı için
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Ansible'ın pip ile kurulu olduğundan emin ol
+      ansible.builtin.pip:
+        name: ansible
+        state: present
+      # Not: 'become: true' pip modülü için genellikle gerekmez,
+      # ancak sistem geneli bir kurulum için veya izin sorunları olursa eklenebilir.
 
   tasks:
     - name: Gerekli değişkenlerin tanımlandığından emin ol
@@ -36,7 +47,7 @@
         INSTALL_K3S_EXEC="--disable=traefik --write-kubeconfig-mode=644 --node-name={{ ansible_hostname }}"
         sh -s -
       args:
-        creates: /usr/local/bin/k3s # Bu dosya varsa, komut çalışmaz (idempotency)
+        creates: /usr/local/bin/k3s
       register: k3s_install_result
       changed_when: k3s_install_result.rc == 0 and "k3s is already installed" not in k3s_install_result.stdout_lines | join(' ')
 
@@ -45,49 +56,42 @@
         name: k3s
         state: started
         enabled: yes
-      when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed) # K3s yeni kurulduysa veya zaten kuruluysa
+      when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed)
 
-    - name: Kubectl için K3s kubeconfig dosyasının varlığını kontrol et
+    - name: Kubeconfig dosyasını bekle
       ansible.builtin.wait_for:
         path: /etc/rancher/k3s/k3s.yaml
         state: present
         timeout: 60
       when: k3s_install_result.changed
 
-    # --- YENİ HELM KURULUM ADIMLARI ---
-    - name: Helm için gerekli paketlerin kurulu olduğundan emin ol (curl, gpg)
-      ansible.builtin.apt:
-        name:
-          - curl
-          - gpg # Ubuntu için gpg genellikle gnupg paketini de içerir veya yeterlidir.
-        state: present
-        update_cache: yes
-      when: ansible_os_family == "Debian" # veya ansible_distribution == "Ubuntu"
-      become: true # Bu paketlerin kurulumu sudo gerektirir
-
+    # --- HELM KURULUMU ---
     - name: Helm GPG anahtarını indir ve ekle
       ansible.builtin.shell: >
         curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg
       args:
-        creates: /usr/share/keyrings/helm.gpg # Bu dosya varsa, komut çalışmaz
-      become: true # gpg --dearmor -o için sudo gerekebilir
+        creates: /usr/share/keyrings/helm.gpg
+      # become: true # Zaten genel become: true altında
 
     - name: Helm apt deposunu ekle
       ansible.builtin.apt_repository:
         repo: "deb [arch={{ ansible_architecture }} signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main"
         state: present
-        filename: helm-stable-debian # /etc/apt/sources.list.d/ altına bu isimle dosya oluşturur
-        update_cache: yes # Depo eklendikten sonra apt cache'i güncelle
-      become: true
+        filename: helm-stable-debian
+      when: ansible_os_family == "Debian"
+      register: helm_repo_added
+
+    - name: APT önbelleğini Helm deposu eklendikten sonra veya her zaman güncelle
+      ansible.builtin.apt:
+        update_cache: yes
       when: ansible_os_family == "Debian"
 
-    - name: Helm'i apt ile kur (depo eklendikten sonra)
+    - name: Helm paketini kur
       ansible.builtin.apt:
         name: helm
         state: present
-      become: true
       when: ansible_os_family == "Debian"
-    # --- YENİ HELM KURULUM ADIMLARI SONU ---
+    # --- HELM KURULUMU BİTTİ ---
 
     - name: Kubernetes namespace oluştur (varsa hata verme)
       kubernetes.core.k8s:
@@ -95,36 +99,13 @@
         api_version: v1
         kind: Namespace
         state: present
-      #ignore_errors: true # k8s modülü zaten idempotent
 
-    # Docker Hub veya özel registry için image pull secret oluşturma (opsiyonel, güvenliğe dikkat!)
-    # Bu adım, CI/CD pipeline'ında GitHub secret'larından DOCKERHUB_TOKEN alınarak daha güvenli yönetilebilir.
-    # - name: Docker Hub pull secret oluştur/güncelle
-    #   kubernetes.core.k8s_secret:
-    #     name: dockerhub-pull-secret
-    #     namespace: "{{ namespace }}"
-    #     type: kubernetes.io/dockerconfigjson
-    #     data:
-    #       .dockerconfigjson: "{{ lookup('template', 'dockerconfig.json.j2') | b64encode }}"
-    #   vars:
-    #     # Bu değişkenler normalde Ansible Vault veya CI secret'larından gelmeli
-    #     registry_server: "https://index.docker.io/v1/"
-    #     registry_username: "{{ docker_username | default(docker_username_default) }}"
-    #     registry_password: "{{ lookup('env', 'ANSIBLE_DOCKER_REGISTRY_PASSWORD') }}" # Örnek: Ortam değişkeninden alma
+    - name: Ortama özel values dosyasının varlığını kontrol et
+      ansible.builtin.stat:
+        path: "{{ helm_chart_path }}/values-{{ helm_env | default(helm_env_default) }}.yaml"
+      register: values_file
 
-    # - name: Varsayılan service account'a image pull secret ekle
-    #   kubernetes.core.k8s_patch:
-    #     kind: ServiceAccount
-    #     name: default
-    #     namespace: "{{ namespace }}"
-    #     patch:
-    #       - op: add
-    #         path: /imagePullSecrets/-
-    #         value:
-    #           name: dockerhub-pull-secret
-    #   when: docker_username is defined # Sadece secret oluşturulduysa
-
-    - name: Helm ile ortama özel values ve imaj tag'i ile deploy et
+    - name: Helm ile deploy et
       ansible.builtin.command: >
         helm upgrade --install {{ release_name }} {{ helm_chart_path }}
         --namespace {{ namespace }}
@@ -133,18 +114,22 @@
         --set backend.image.repository={{ docker_username | default(docker_username_default) }}/backend
         --set backend.image.tag={{ image_tag | default(image_tag_default) }}
         -f {{ helm_chart_path }}/values.yaml
-        -f {{ helm_chart_path }}/values-{{ helm_env | default(helm_env_default) }}.yaml
+        {{ "-f " + helm_chart_path + "/values-" + (helm_env | default(helm_env_default)) + ".yaml" if values_file.stat.exists else "" }}
         --kubeconfig /etc/rancher/k3s/k3s.yaml
       register: helm_deploy_result
-      changed_when: "'release {{ release_name }} has been upgraded' in helm_deploy_result.stdout or 'deployed' in helm_deploy_result.stdout or 'pending-install' in helm_deploy_result.stderr or 'pending-upgrade' in helm_deploy_result.stderr"
-      failed_when: helm_deploy_result.rc != 0
+      changed_when: >
+        "'has been upgraded' in helm_deploy_result.stdout or
+         'deployed' in helm_deploy_result.stdout or
+         'pending' in helm_deploy_result.stderr"
+      failed_when: helm_deploy_result.rc != 0 or ("Error" in helm_deploy_result.stderr and "Error: context deadline exceeded" not in helm_deploy_result.stderr)
+      # "context deadline exceeded" hatasını bazen Helm ilk deploy'da verebilir ama yine de başarılı olabilir.,
 
-    - name: Helm deploy sonucunu göster (debug için)
+    - name: Helm deploy sonucunu göster
       ansible.builtin.debug:
         var: helm_deploy_result.stdout_lines
-      when: helm_deploy_result.stdout_lines is defined and helm_deploy_result.stdout_lines | length > 0
+      when: helm_deploy_result.stdout_lines is defined and helm_deploy_result.stdout_lines
 
-    - name: Helm deploy hata çıktısını göster (debug için)
+    - name: Helm hata çıktılarını göster
       ansible.builtin.debug:
         var: helm_deploy_result.stderr_lines
-      when: helm_deploy_result.stderr_lines is defined and helm_deploy_result.stderr_lines | length > 0
+      when: helm_deploy_result.stderr_lines is defined and helm_deploy_result.stderr_lines
