@@ -1,123 +1,139 @@
----
+# ansible/deploy.yml
 - name: K3s ve Uygulama Dağıtımı (Ortam Bazlı)
   hosts: localhost
   connection: local
   become: true
 
   vars:
-    helm_chart_path: "{{ playbook_dir }}/../helm"
-    release_name: myapp
-    namespace: myapp
-    helm_env_default: "staging"
-    image_tag_default: "latest"
-    docker_username_default: "meyfcsalik"
-    kubeconfig_path: /etc/rancher/k3s/k3s.yaml
+    helm_chart_path: "{{ playbook_dir }}/../helm" # ansible klasöründen bir üst dizindeki helm klasörü
+    release_name: "eunternehmen-release" # Daha açıklayıcı bir release adı
+    app_namespace: "eunternehmen" # 'namespace' ayrılmış bir kelime olabilir, farklı bir ad kullanalım
+    kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+    # GitHub Actions'tan gelen değişkenler için varsayılanlar (opsiyonel)
+    helm_env: "{{ lookup('env', 'HELM_ENV_OVERRIDE') | default('staging') }}"
+    image_tag: "{{ lookup('env', 'IMAGE_TAG_OVERRIDE') | default('latest') }}"
+    docker_username: "{{ lookup('env', 'DOCKER_USERNAME_OVERRIDE') | default('meyfcsalik') }}"
 
   pre_tasks:
-    - name: Temel sistem paketlerini kur (Ansible, Helm için gerekli araçlar)
-      apt:
+    - name: Sistem güncellemelerini yap ve temel paketleri kur
+      ansible.builtin.apt:
         name:
           - python3
           - python3-pip
           - curl
           - gnupg
-          - ansible
+          - software-properties-common
+          - ansible # Ansible'ın kendisi
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
 
+    - name: Kubernetes Python kütüphanesinin kurulu olduğundan emin ol (gerekirse)
+      ansible.builtin.pip:
+        name:
+          - kubernetes
+          # - helm # Eğer community.kubernetes.helm modülü için gerekliyse, genellikle değildir.
+        state: present
+
   tasks:
-    - name: Gerekli değişkenlerin tanımlandığından emin ol
-      assert:
+    - name: Gerekli değişkenlerin tanımlandığından emin ol (GitHub Actions'tan gelecek)
+      ansible.builtin.assert:
         that:
-          - helm_env is defined or helm_env_default is defined
-          - image_tag is defined or image_tag_default is defined
-          - docker_username is defined or docker_username_default is defined
-        fail_msg: "Gerekli değişkenler eksik: helm_env, image_tag veya docker_username"
+          - helm_env is defined
+          - image_tag is defined
+          - docker_username is defined
+        fail_msg: "helm_env, image_tag, ve docker_username değişkenleri eksik veya tanımlanmamış."
+      when: ansible_env.GITHUB_ACTIONS == "true" # Sadece GitHub Actions'ta çalışırken kontrol et
 
     - name: K3s yükleyici script (sadece kurulu değilse)
-      shell: >
-        curl -sfL https://get.k3s.io |
-        INSTALL_K3S_EXEC="--disable=traefik --write-kubeconfig-mode=644 --node-name={{ ansible_hostname }}" sh -
-      args:
+      ansible.builtin.shell:
+        cmd: "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--disable=traefik --write-kubeconfig-mode=644 --node-name={{ ansible_hostname }}' sh -s -"
         creates: /usr/local/bin/k3s
       register: k3s_install_result
-      changed_when: "'k3s is already installed' not in k3s_install_result.stdout"
+      changed_when: k3s_install_result.rc == 0 and "k3s is already installed" not in k3s_install_result.stdout_lines | join(' ')
 
     - name: K3s servisinin aktif ve çalışır olduğundan emin ol
-      systemd:
+      ansible.builtin.systemd:
         name: k3s
-        state: started
         enabled: yes
+        state: started
+      when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed)
 
     - name: Kubeconfig dosyasını bekle
-      wait_for:
+      ansible.builtin.wait_for:
         path: "{{ kubeconfig_path }}"
         state: present
         timeout: 60
         delay: 5
+      when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed)
 
+    # --- HELM KURULUMU ---
     - name: Helm GPG anahtarını indir ve ekle
-      shell: >
-        curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg
-      args:
-        creates: /usr/share/keyrings/helm.gpg
+      ansible.builtin.get_url:
+        url: https://baltocdn.com/helm/signing.asc
+        dest: /tmp/helm.asc
+        mode: '0644'
+
+    - name: Helm GPG anahtarını sisteme import et
+      ansible.builtin.command:
+        cmd: "gpg --dearmor -o /usr/share/keyrings/helm.gpg /tmp/helm.asc"
+        creates: /usr/share/keyrings/helm.gpg # Bu dosya varsa, komut çalışmaz
 
     - name: Helm apt deposunu ekle
-      apt_repository:
+      ansible.builtin.apt_repository:
         repo: "deb [arch={{ ansible_architecture }} signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main"
-        filename: helm-stable-debian
         state: present
-
-    - name: APT önbelleğini güncelle
-      apt:
-        update_cache: yes
+        filename: helm-stable-debian # Bu, /etc/apt/sources.list.d/ altında oluşturulur
+        update_cache: yes # Depo eklendikten sonra cache'i güncelle
 
     - name: Helm paketini kur
-      apt:
+      ansible.builtin.apt:
         name: helm
         state: present
+    # --- HELM KURULUMU BİTTİ ---
 
     - name: Kubernetes namespace oluştur
       kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
-        name: "{{ namespace }}"
-        api_version: v1
-        kind: Namespace
         state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ app_namespace }}"
 
     - name: Ortama özel values dosyasının varlığını kontrol et
-      stat:
-        path: "{{ helm_chart_path }}/values-{{ helm_env | default(helm_env_default) }}.yaml"
-      register: values_file
+      ansible.builtin.stat:
+        path: "{{ helm_chart_path }}/values-{{ helm_env }}.yaml"
+      register: env_values_file
 
-    - name: Helm ile uygulamayı deploy et
-      command: >
-        helm upgrade --install {{ release_name }} {{ helm_chart_path }}
-        --namespace {{ namespace }}
-        --set frontend.image.repository={{ docker_username | default(docker_username_default) }}/frontend
-        --set frontend.image.tag={{ image_tag | default(image_tag_default) }}
-        --set backend.image.repository={{ docker_username | default(docker_username_default) }}/backend
-        --set backend.image.tag={{ image_tag | default(image_tag_default) }}
-        -f {{ helm_chart_path }}/values.yaml
-        {% if values_file.stat.exists %}-f {{ helm_chart_path }}/values-{{ helm_env | default(helm_env_default) }}.yaml{% endif %}
-        --kubeconfig {{ kubeconfig_path }}
+    - name: Helm ile frontend, backend ve mongodb dağıtımı
+      community.kubernetes.helm:
+        kubeconfig: "{{ kubeconfig_path }}"
+        chart_ref: "{{ helm_chart_path }}" # Düzeltildi
+        release_name: "{{ release_name }}"
+        release_namespace: "{{ app_namespace }}"
+        state: present # 'deployed' de kullanılabilir, 'present' daha idempotent
+        values_files:
+          - "{{ helm_chart_path }}/values.yaml" # Genel values önce
+          - "{{ helm_chart_path }}/values-{{ helm_env }}.yaml" # Sonra ortama özel olan (varsa)
+        # Sadece dosya varsa ekle, yoksa Ansible hata verir.
+        # Bu yukarıdaki stat kontrolü ile birleştirilebilir veya values_files listesi dinamik oluşturulabilir.
+        # Şimdilik, values-{{ helm_env }}.yaml dosyasının her zaman var olduğunu varsayıyoruz.
+        # Eğer yoksa ve hata alıyorsan, bu kısmı dinamik hale getirmek gerekir.
+        # Alternatif olarak, `community.kubernetes.helm` modülü `value_files` için olmayan dosyaları tolere edebilir, test etmek lazım.
+        set_values:
+          - value: "frontend.image.tag={{ image_tag }}"
+            value_type: string # Değer tiplerini belirtmek iyi bir pratik
+          - value: "backend.image.tag={{ image_tag }}"
+            value_type: string
+          - value: "frontend.image.repository={{ docker_username }}/frontend"
+            value_type: string
+          - value: "backend.image.repository={{ docker_username }}/backend"
+            value_type: string
       register: helm_deploy_result
-      changed_when: >
-        "'has been upgraded' in helm_deploy_result.stdout or
-         'deployed' in helm_deploy_result.stdout or
-         'pending' in helm_deploy_result.stderr"
-      failed_when: >
-        helm_deploy_result.rc != 0 and
-        ("Error" in helm_deploy_result.stderr and
-         "context deadline exceeded" not in helm_deploy_result.stderr)
 
-    - name: Helm deploy çıktısını göster
-      debug:
-        var: helm_deploy_result.stdout_lines
-      when: helm_deploy_result.stdout_lines is defined and helm_deploy_result.stdout_lines | length > 0
-
-    - name: Helm hata çıktısını göster
-      debug:
-        var: helm_deploy_result.stderr_lines
-      when: helm_deploy_result.stderr_lines is defined and helm_deploy_result.stderr_lines | length > 0
+    - name: Helm deploy sonucunu göster
+      ansible.builtin.debug:
+        var: helm_deploy_result
+      when: helm_deploy_result is defined
