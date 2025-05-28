@@ -22,7 +22,7 @@
           - python3-pip
           - curl
           - gnupg
-          - software-properties-common # apt_repository için bazen gerekli
+          - software-properties-common
           - ansible # Ansible'ın kendisi
         state: present
         update_cache: yes
@@ -35,13 +35,14 @@
         state: present
       # become: true # Eğer pip'i root olarak çalıştırmak gerekirse (genellikle gerekmez)
 
-    - name: Ansible Kubernetes koleksiyonunu kur (kubernetes.core)
-      ansible.builtin.command: ansible-galaxy collection install kubernetes.core community.kubernetes
+    - name: Ansible Kubernetes koleksiyonlarını kur (kubernetes.core, community.kubernetes)
+      ansible.builtin.command: "ansible-galaxy collection install kubernetes.core community.kubernetes --force"
       args:
-        warn: false # Eğer zaten kuruluysa uyarıyı gizle (Ansible 2.10+ için)
+        warn: false # Ansible 2.10+ için uyarıları gizler
       register: galaxy_install_result
-      changed_when: "'was installed successfully' in galaxy_install_result.stdout or 'already installed' not in galaxy_install_result.stdout"
-      # become: false # Genellikle kullanıcının kendi koleksiyon yoluna kurar
+      changed_when: "'was installed successfully' in (galaxy_install_result.stdout | default(''))"
+      failed_when: galaxy_install_result.rc != 0 and 'already installed' not in (galaxy_install_result.stdout | default('')) and 'already up-to-date' not in (galaxy_install_result.stdout | default(''))
+      # ignore_errors: true # Sorun devam ederse geçici olarak bunu açıp diğer adımları görebiliriz
 
   tasks:
     - name: Gerekli değişkenlerin GitHub Actions'tan geldiğinden emin ol
@@ -80,7 +81,7 @@
     # --- HELM KURULUMU ---
     # Gerekli curl ve gnupg zaten pre_tasks içinde kuruluyor.
     - name: Helm GPG anahtarını indir ve ekle
-      ansible.builtin.shell: # get_url + command yerine tek adımda shell ile
+      ansible.builtin.shell:
         cmd: "curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg"
         creates: /usr/share/keyrings/helm.gpg
 
@@ -105,7 +106,7 @@
     # --- HELM KURULUMU BİTTİ ---
 
     - name: Kubernetes namespace oluştur
-      kubernetes.core.k8s: # kubernetes.core koleksiyonunu kullanıyoruz
+      kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
         definition:
@@ -120,7 +121,7 @@
       register: env_values_file
 
     - name: Helm ile frontend, backend ve mongodb dağıtımı
-      community.kubernetes.helm: # community.kubernetes koleksiyonunu kullanıyoruz
+      community.kubernetes.helm:
         kubeconfig: "{{ kubeconfig_path }}"
         chart_ref: "{{ helm_chart_path }}"
         release_name: "{{ release_name }}"
