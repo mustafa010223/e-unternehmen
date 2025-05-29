@@ -40,14 +40,13 @@
       changed_when: galaxy_install_result.rc == 0 and "already installed" not in galaxy_install_result.stdout and "already up-to-date" not in galaxy_install_result.stdout
 
   tasks:
-    - name: Gerekli değişkenlerin GitHub Actions'tan geldiğinden emin ol
+    - name: Gerekli değişkenlerin tanımlı olduğunu kontrol et
       ansible.builtin.assert:
         that:
-          - lookup('env', 'GITHUB_ACTIONS') == 'true'
           - helm_env is defined and helm_env != ""
           - image_tag is defined and image_tag != ""
           - docker_username is defined and docker_username != ""
-        fail_msg: "GitHub Actions ortamında helm_env, image_tag, ve docker_username değişkenleri eksik veya boş."
+        fail_msg: "helm_env, image_tag, ve docker_username değişkenleri eksik veya boş."
       when: lookup('env', 'GITHUB_ACTIONS') == "true"
       run_once: true
 
