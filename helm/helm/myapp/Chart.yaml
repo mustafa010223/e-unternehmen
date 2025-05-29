@@ -1,4 +1,0 @@
-apiVersion: v2
-name: eunternehmen
-description: A Helm chart for deploying frontend, backend and MongoDB
-version: 0.1.0
