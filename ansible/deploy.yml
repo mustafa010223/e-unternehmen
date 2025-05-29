@@ -48,7 +48,7 @@
           - image_tag is defined and image_tag != ""
           - docker_username is defined and docker_username != ""
         fail_msg: "GitHub Actions ortamında helm_env, image_tag, ve docker_username değişkenleri eksik veya boş."
-      when: ansible_env.GITHUB_ACTIONS == "true"
+      when: lookup('env', 'GITHUB_ACTIONS') == "true"
       run_once: true
 
     - name: K3s yükleyici script (sadece kurulu değilse)
