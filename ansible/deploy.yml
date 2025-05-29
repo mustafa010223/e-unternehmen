@@ -5,13 +5,13 @@
   become: true
 
   vars:
-    helm_chart_path: "{{ playbook_dir }}/../helm"
+    helm_chart_path: "{{ playbook_dir }}/../helm/myapp"
     release_name: "eunternehmen-release"
     app_namespace: "eunternehmen"
     kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
-    helm_env: "{{ lookup('env', 'HELM_ENV_OVERRIDE') | default('staging') }}"
-    image_tag: "{{ lookup('env', 'IMAGE_TAG_OVERRIDE') | default('latest') }}"
-    docker_username: "{{ lookup('env', 'DOCKER_USERNAME_OVERRIDE') | default('meyfcsalik') }}"
+    helm_env: "{{ lookup('env', 'helm_env') | default('staging') }}"
+    image_tag: "{{ lookup('env', 'image_tag') | default('latest') }}"
+    docker_username: "{{ lookup('env', 'docker_username') | default('meyfcsalik') }}"
 
   pre_tasks:
     - name: Temel sistem güncellemelerini yap ve gerekli paketleri kur

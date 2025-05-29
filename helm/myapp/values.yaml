@@ -25,7 +25,7 @@ frontend:
     type: NodePort
     port: 80 # Service'in dinleyeceği port
     targetPort: 80 # Frontend container'ının (Nginx) dinlediği port
-    nodePort: 30080 # Dışarıdan erişim için NodePort
+    nodePort: 30081 # Dışarıdan erişim için NodePort
   resources: {}
   #  requests:
   #    cpu: 100m
