@@ -58,6 +58,7 @@ jobs:
           elif [[ "${{ github.base_ref }}" == "develop" && "${{ github.event_name }}" == "pull_request" ]]; then
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           else
+            # Default to staging for other cases like workflow_dispatch on a specific branch or PRs to other branches
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
         shell: bash
@@ -86,15 +87,18 @@ jobs:
         working-directory: ./backend
         run: npm test --if-present -- --watchAll=false --coverage
         env:
-          MONGO_URL: mongodb://mongodb_test:27017/myapp_test
+          MONGO_URL: mongodb://mongodb_test:27017/myapp_test # For backend tests
 
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
-        if: github.event.pull_request.head.sha != github.event.pull_request.base.sha && github.event.before != github.sha
+        # Run only on pushes to main/develop or PRs to main/develop, avoid on merge commits from PRs
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'develop'))
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before || github.event.repository.default_branch }}
           head: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Optional: Add --fail if you want the workflow to fail on found secrets
+          # args: --fail
 
       - name: Audit NPM Dependencies (Frontend)
         working-directory: ./frontend
@@ -120,7 +124,9 @@ jobs:
           push: true
           tags: |
             ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
+            ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
+          # Optional: Add build arguments, cache settings, etc.
 
       - name: Build and Push Backend Docker Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
@@ -131,20 +137,23 @@ jobs:
           push: true
           tags: |
             ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
+            ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
+          # Optional: Add build arguments, cache settings, etc.
 
   deploy:
     name: Deploy to K3s using Ansible
     needs: test-and-build
+    # Run only when pushing to main or develop branches, not on PRs.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted
+    runs-on: self-hosted # Ensure your self-hosted runner is configured and active
     environment:
-      name: ${{ needs.test-and-build.outputs.deploy_env }}
+      name: ${{ needs.test-and-build.outputs.deploy_env }} # Sets up environment secrets if configured in GitHub
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.sha }} # Ensure we deploy the exact commit that was pushed
 
       - name: Deploy to K3s via SSH using Ansible
         uses: appleboy/ssh-action@v1.0.3
@@ -152,8 +161,11 @@ jobs:
           host: ${{ secrets.K3S_HOST_IP }}
           username: ${{ secrets.K3S_USER }}
           key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
+          # Optional: port, passphrase for key if needed
           script: |
             cd ${{ env.K3S_SERVER_PROJECT_PATH }}
             git fetch --all
-            git checkout ${{ github.sha }}
+            git checkout ${{ github.sha }} # Checkout the specific commit on the server
+            # Ensure Ansible and required collections are installed on the self-hosted runner or target host
+            # The playbook already handles some installations, but ansible itself should be present
             ansible-playbook ansible/deploy.yml --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} image_tag=${{ needs.test-and-build.outputs.image_tag }} docker_username=${{ env.DOCKERHUB_USERNAME }}"
