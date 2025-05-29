@@ -40,6 +40,16 @@
       changed_when: galaxy_install_result.rc == 0 and "already installed" not in galaxy_install_result.stdout and "already up-to-date" not in galaxy_install_result.stdout
 
   tasks:
+    - name: Kubeconfig dosyasının varlığını kontrol et (hata öncesi kontrol)
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path }}"
+      register: kubeconfig_status
+
+    - name: Kubeconfig bulunamadıysa hata ver
+      ansible.builtin.fail:
+        msg: "Kubeconfig dosyasına erişilemiyor. '{{ kubeconfig_path }}' yolu kontrol edilmeli."
+      when: not kubeconfig_status.stat.exists
+
     - name: Gerekli değişkenlerin tanımlı olduğunu kontrol et
       ansible.builtin.assert:
         that:
@@ -71,6 +81,11 @@
         timeout: 60
         delay: 5
       when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed)
+
+    - name: Kubeconfig dosyasının okunabilir olduğundan emin ol
+      ansible.builtin.file:
+        path: "{{ kubeconfig_path }}"
+        mode: '0644'
 
     - name: Helm GPG anahtarını indir ve ekle
       ansible.builtin.shell:
@@ -105,6 +120,8 @@
           kind: Namespace
           metadata:
             name: "{{ app_namespace }}"
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
 
     - name: Ortama özel values dosyasının varlığını kontrol et
       ansible.builtin.stat:
@@ -128,6 +145,8 @@
             value_type: string
           - value: "backend.image.repository={{ docker_username }}/backend"
             value_type: string
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
       register: helm_deploy_result
 
     - name: Helm deploy sonucunu göster
