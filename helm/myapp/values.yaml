@@ -17,7 +17,7 @@ serviceAccount:
   # automountServiceAccountToken: true
 frontend:
   image:
-    repository: yourdockerhubusername/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    repository: meyfcsalik/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
     pullPolicy: IfNotPresent
     # tag: "" # CI/CD tarafından override edilecek
   replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir
@@ -48,7 +48,7 @@ frontend:
 
 backend:
   image:
-    repository: yourdockerhubusername/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    repository: meyfcsalik/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
     pullPolicy: IfNotPresent
     # tag: "" # CI/CD tarafından override edilecek
   replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir
