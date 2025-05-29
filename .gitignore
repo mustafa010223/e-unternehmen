@@ -129,3 +129,4 @@ build/ # Genel 'build' klasörlerini yok sayar. Eğer frontend/build commit edil
 *~
 actions-runner/
 
+echo "actions-runner/_work/" >> .gitignore
