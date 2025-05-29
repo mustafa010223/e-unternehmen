@@ -1,0 +1,119 @@
+---
+# Source: myapp/templates/mongodb-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myapp-mongodb-pvc
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: mongodb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Source: myapp/templates/backend-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-backend
+  labels:
+    
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+      name: http
+  selector:
+    
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/component: backend
+---
+# Source: myapp/templates/frontend-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-frontend
+  labels:
+    
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: frontend
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+      nodePort: 30081
+  selector:
+    
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/component: frontend
+---
+# Source: myapp/templates/mongodb-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-mongodb  # values.yaml'daki service adıyla eşleşmeli
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: mongodb
+spec:
+  type: ClusterIP
+  ports:
+    - port: 27017
+      targetPort: mongodb  # Deployment'taki container port adı
+      protocol: TCP
+      name: mongodb
+  selector:
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/component: mongodb
+---
+# Source: myapp/templates/frontend-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: "yourdockerhubusername/frontend:"
+          ports:
+            - containerPort: 80
