@@ -1,0 +1,47 @@
+# values-prod.yaml - Production Ortamı İçin Değerler
+
+frontend:
+  replicaCount: 2 # Production için daha fazla replica
+  image:
+    repository: yourdockerhubusername/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    # tag: "production-latest" # CI/CD tarafından dinamik olarak set edilecek
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+backend:
+  replicaCount: 2 # Production için daha fazla replica
+  image:
+    repository: yourdockerhubusername/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    # tag: "production-latest" # CI/CD tarafından dinamik olarak set edilecek
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    MONGO_URL: "mongodb://myapp-mongodb:27017/myappdb_prod" # Production DB adı
+    # Production'a özel diğer ortam değişkenleri
+    # NODE_ENV: "production"
+
+mongodb:
+  replicaCount: 1 # Tek node MongoDB, production için replicaSet düşünülebilir
+  persistence:
+    size: 5Gi # Production için daha büyük disk boyutu
+  # Production MongoDB için auth kesinlikle etkinleştirilmeli ve secret'lar kullanılmalı
+  # auth:
+  #   rootUser: ... (secret'tan)
+  #   rootPassword: ... (secret'tan)
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m # 1 core
+      memory: 1Gi
