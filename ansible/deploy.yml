@@ -2,14 +2,13 @@
 - name: K3s ve Uygulama Dağıtımı (Ortam Bazlı)
   hosts: localhost
   connection: local
-  become: true # Çoğu görev sudo gerektirecek
+  become: true
 
   vars:
     helm_chart_path: "{{ playbook_dir }}/../helm"
     release_name: "eunternehmen-release"
     app_namespace: "eunternehmen"
     kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
-    # GitHub Actions'tan gelen değişkenler için varsayılanlar
     helm_env: "{{ lookup('env', 'HELM_ENV_OVERRIDE') | default('staging') }}"
     image_tag: "{{ lookup('env', 'IMAGE_TAG_OVERRIDE') | default('latest') }}"
     docker_username: "{{ lookup('env', 'DOCKER_USERNAME_OVERRIDE') | default('meyfcsalik') }}"
@@ -23,7 +22,7 @@
           - curl
           - gnupg
           - software-properties-common
-          - ansible # Ansible'ın kendisi
+          - ansible
         state: present
         update_cache: yes
       when: ansible_os_family == "Debian"
@@ -31,18 +30,14 @@
     - name: Gerekli Python kütüphanelerini pip ile kur (kubernetes)
       ansible.builtin.pip:
         name:
-          - kubernetes # kubernetes.core.k8s ve community.kubernetes.helm modülleri için
+          - kubernetes
         state: present
-      # become: true # Eğer pip'i root olarak çalıştırmak gerekirse (genellikle gerekmez)
 
     - name: Ansible Kubernetes koleksiyonlarını kur (kubernetes.core, community.kubernetes)
-      ansible.builtin.command: "ansible-galaxy collection install kubernetes.core community.kubernetes --force"
-      args:
-        warn: false # Ansible 2.10+ için uyarıları gizler
+      ansible.builtin.shell:
+        cmd: "ansible-galaxy collection install kubernetes.core community.kubernetes --force"
       register: galaxy_install_result
-      changed_when: "'was installed successfully' in (galaxy_install_result.stdout | default(''))"
-      failed_when: galaxy_install_result.rc != 0 and 'already installed' not in (galaxy_install_result.stdout | default('')) and 'already up-to-date' not in (galaxy_install_result.stdout | default(''))
-      # ignore_errors: true # Sorun devam ederse geçici olarak bunu açıp diğer adımları görebiliriz
+      changed_when: galaxy_install_result.rc == 0 and "already installed" not in galaxy_install_result.stdout and "already up-to-date" not in galaxy_install_result.stdout
 
   tasks:
     - name: Gerekli değişkenlerin GitHub Actions'tan geldiğinden emin ol
@@ -53,7 +48,7 @@
           - image_tag is defined and image_tag != ""
           - docker_username is defined and docker_username != ""
         fail_msg: "GitHub Actions ortamında helm_env, image_tag, ve docker_username değişkenleri eksik veya boş."
-      when: ansible_env.GITHUB_ACTIONS == "true" # Sadece GitHub Actions'ta çalışırken kontrol et
+      when: ansible_env.GITHUB_ACTIONS == "true"
       run_once: true
 
     - name: K3s yükleyici script (sadece kurulu değilse)
@@ -78,8 +73,6 @@
         delay: 5
       when: k3s_install_result.changed or (k3s_install_result.rc == 0 and not k3s_install_result.changed)
 
-    # --- HELM KURULUMU ---
-    # Gerekli curl ve gnupg zaten pre_tasks içinde kuruluyor.
     - name: Helm GPG anahtarını indir ve ekle
       ansible.builtin.shell:
         cmd: "curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg"
@@ -93,7 +86,7 @@
       when: ansible_os_family == "Debian"
       register: helm_repo_added
 
-    - name: APT önbelleğini Helm deposu eklendikten sonra veya her zaman güncelle
+    - name: APT önbelleğini güncelle
       ansible.builtin.apt:
         update_cache: yes
       when: ansible_os_family == "Debian"
@@ -103,7 +96,6 @@
         name: helm
         state: present
       when: ansible_os_family == "Debian"
-    # --- HELM KURULUMU BİTTİ ---
 
     - name: Kubernetes namespace oluştur
       kubernetes.core.k8s:
