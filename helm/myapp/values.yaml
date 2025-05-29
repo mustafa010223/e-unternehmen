@@ -5,9 +5,19 @@ replicaCount: 1
 imagePullSecrets: []
 # - name: myregistrykey
 
+serviceAccount:
+  # Oluşturulup oluşturulmayacağını belirtir.
+  # Eğer true ise, name alanında belirtilen isimde bir ServiceAccount oluşturulur.
+  # Eğer false ise, aşağıdaki name alanında belirtilen mevcut bir ServiceAccount kullanılır.
+  create: true
+  # Eğer create false ise veya özel bir isim vermek istemiyorsanız bu alan boş bırakılabilir,
+  # o zaman 'default' service account kullanılır veya helper'daki mantığa göre bir isim üretilir.
+  name: "" # Otomatik isim için boş bırakın veya özel bir isim verin
+  annotations: {}
+  # automountServiceAccountToken: true
 frontend:
   image:
-    repository: yourdockerhubusername/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    repository: meyfcsalik/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
     pullPolicy: IfNotPresent
     # tag: "" # CI/CD tarafından override edilecek
   replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir
@@ -15,7 +25,7 @@ frontend:
     type: NodePort
     port: 80 # Service'in dinleyeceği port
     targetPort: 80 # Frontend container'ının (Nginx) dinlediği port
-    nodePort: 30080 # Dışarıdan erişim için NodePort
+    nodePort: 30081 # Dışarıdan erişim için NodePort
   resources: {}
   #  requests:
   #    cpu: 100m
@@ -38,7 +48,7 @@ frontend:
 
 backend:
   image:
-    repository: yourdockerhubusername/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    repository: meyfcsalik/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
     pullPolicy: IfNotPresent
     # tag: "" # CI/CD tarafından override edilecek
   replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir

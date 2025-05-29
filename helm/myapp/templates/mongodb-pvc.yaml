@@ -4,11 +4,11 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ .Values.mongodb.service.name }}-pvc
   labels:
-    {{- include "myapp.labels" . | nindent 8 }}
+    {{- include "myapp.labels" . | nindent 4 }}
     app.kubernetes.io/component: mongodb
 spec:
   accessModes:
-    {{- toYaml .Values.mongodb.persistence.accessModes | nindent 8 }}
+    - {{ .Values.mongodb.persistence.accessModes | join "\n    - " }}
   resources:
     requests:
       storage: {{ .Values.mongodb.persistence.size }}
@@ -20,3 +20,4 @@ spec:
   {{- end }}
   {{- end }}
 {{- end }}
+
