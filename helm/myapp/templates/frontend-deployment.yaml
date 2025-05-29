@@ -1,21 +1,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: frontend
+  name: {{ include "myapp.fullname" . }}-frontend # İsimlendirme için helper kullanmak daha iyi
   labels:
-    app: frontend
+    {{- include "myapp.labels" . | nindent 4 }} # Deployment'a standart etiketleri ekle
+    app.kubernetes.io/component: frontend     # Komponent etiketini ekle
 spec:
-  replicas: 1
+  replicas: {{ .Values.frontend.replicaCount | default 1 }}
   selector:
     matchLabels:
-      app: frontend
+      {{- include "myapp.selectorLabels" . | nindent 6 }} # Pod'ları seçmek için standart etiketler
+      app.kubernetes.io/component: frontend             # Komponent etiketini ekle
   template:
     metadata:
       labels:
-        app: frontend
+        {{- include "myapp.selectorLabels" . | nindent 8 }} # POD'LARA standart etiketleri ekle
+        app.kubernetes.io/component: frontend             # Komponent etiketini ekle
+        # Eski 'app: frontend' etiketi yerine bunlar kullanılacak
     spec:
+      serviceAccountName: {{ include "myapp.serviceAccountName" . }} # Oluşturduğumuz SA'yı kullansın
       containers:
         - name: frontend
-          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
-            - containerPort: 80
+            - name: http # Porta isim vermek iyi bir pratiktir
+              containerPort: 80 # values.yaml'daki frontend targetPort
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.frontend.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.frontend.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
