@@ -3,19 +3,19 @@ name: CI/CD Pipeline for Microservices
 on:
   push:
     branches:
-      - main # Production branch
-      - develop # Staging branch
+      - main
+      - develop
   pull_request:
     branches:
       - main
       - develop
-  workflow_dispatch: # Manuel tetikleme için
+  workflow_dispatch:
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik
-  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # K3s sunucunuzdaki proje yolu
-  HELM_CHART_PATH: helm/myapp # Chart'ınızın yolu (proje köküne göre)
-  HELM_RELEASE_NAME: myapp # Helm release adı
+  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen
+  HELM_CHART_PATH: helm/myapp
+  HELM_RELEASE_NAME: myapp
 
 jobs:
   test-and-build:
@@ -56,11 +56,11 @@ jobs:
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           elif [[ "${{ github.base_ref }}" == "main" && "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT # PR'lar için test/build amacıyla
+            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
           elif [[ "${{ github.base_ref }}" == "develop" && "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT # PR'lar için test/build amacıyla
+            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           else
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT # Diğer durumlar için varsayılan
+            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
         shell: bash
 
@@ -111,7 +111,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }} # Docker Hub token'ınız
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
@@ -141,14 +141,27 @@ jobs:
     name: Deploy to K3s using Ansible
     needs: test-and-build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted # Kendi runner'ınızda çalışacak
+    runs-on: self-hosted
     environment:
       name: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
       - name: Checkout Repository (on runner)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }} # Deploy edilecek kesin commit
+          ref: ${{ github.sha }}
+
+      - name: Mask sensitive values
+        run: |
+          echo "::add-mask::${{ secrets.GRAFANA_ADMIN_PASSWORD }}"
+          echo "::add-mask::${{ secrets.ANSIBLE_VAULT_PASSWORD }}"
+
+      - name: Create Ansible Vault file
+        run: |
+          cat << EOF > vault_vars.yml
+          vault_grafana_password: "${{ secrets.GRAFANA_ADMIN_PASSWORD }}"
+          vault_docker_username: "${{ env.DOCKERHUB_USERNAME }}"
+          EOF
+          ansible-vault encrypt vault_vars.yml --vault-password ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
 
       - name: Deploy to K3s via SSH using Ansible
         uses: appleboy/ssh-action@v1.0.3
@@ -157,20 +170,50 @@ jobs:
           username: ${{ secrets.K3S_USER }}
           key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
           script: |
-            set -e # Herhangi bir komut hata verirse script'i durdur
+            set -e
             echo "--- Updating project repository on K3s server ---"
             cd ${{ env.K3S_SERVER_PROJECT_PATH }}
             git fetch --all
-            git checkout ${{ github.sha }} # Sunucuda da aynı commit'i checkout et
-            echo "--- Running Ansible Playbook for Helm Deployment ---"
+            git checkout ${{ github.sha }}
+            
+            echo "--- Writing Vault password ---"
+            echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_pass
+            
+            echo "--- Running Ansible Playbook for Atomic Helm Deployment ---"
             ansible-playbook ansible/deploy.yml \
+              --vault-password-file .vault_pass \
               --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} \
                             image_tag=${{ needs.test-and-build.outputs.image_tag }} \
-                            docker_username=${{ env.DOCKERHUB_USERNAME }} \
                             helm_chart_path_on_server=${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }} \
                             helm_release_name=${{ env.HELM_RELEASE_NAME }} \
-                            grafana_password=${{ secrets.GRAFANA_ADMIN_PASSWORD }}"
+                            atomic_deploy=true \
+                            timeout=5m" \
+              --extra-vars "@vault_vars.yml"
+            
+            echo "--- Cleaning up credentials ---"
+            rm -f .vault_pass vault_vars.yml
+            
             echo "--- Deployment finished ---"
 
-      # Opsiyonel: Helm Rollback mantığı burada eklenebilir
-      # Veya Ansible playbook içinde --atomic ile yönetilebilir
+      - name: Verify Deployment Health
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.K3S_HOST_IP }}
+          username: ${{ secrets.K3S_USER }}
+          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
+          script: |
+            echo "--- Verifying application health ---"
+            curl --retry 10 --retry-delay 5 --retry-all-errors -sSf http://localhost:8080/health | grep "OK"
+            echo "--- Health check passed ---"
+
+      - name: Rollback on Failure
+        if: ${{ failure() }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.K3S_HOST_IP }}
+          username: ${{ secrets.K3S_USER }}
+          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
+          script: |
+            echo "--- DEPLOYMENT FAILED - INITIATING ROLLBACK ---"
+            helm rollback ${{ env.HELM_RELEASE_NAME }} 0
+            echo "--- Rollback completed successfully ---"

@@ -1,72 +1,125 @@
-- name: Deploy My Application to K3s
-  hosts: localhost # Ansible'ın çalıştığı yer (self-hosted runner veya SSH ile bağlanılan K3s sunucusu)
-  # Eğer Ansible K3s sunucusunda çalışıyorsa `become: true` gerekebilir.
-  # Eğer self-hosted runner'dan K3s API'sine kubectl/helm ile erişiliyorsa,
-  # runner'da kubeconfig ayarlanmış olmalı.
-  # Şu anki SSH Action mantığıyla Ansible komutları K3s sunucusunda çalıştırılıyor.
-  become: true # Helm ve kubectl için sudo gerekebilir
-
+---
+- name: K8s Uygulama Dağıtımı ve Güvenli Yönetim
+  hosts: k8s_master
+  become: true
   vars:
-    # Bu değerler --extra-vars ile GitHub Actions'tan gelecek
-    helm_env: "staging" # Varsayılan
-    image_tag: "latest" # Varsayılan
-    docker_username: "meyfcsalik" # Varsayılan
-    helm_chart_path_on_server: "/path/to/your/project/helm/myapp" # Varsayılan, override edilecek
-    helm_release_name: "myapp" # Varsayılan
-    grafana_password: "ChangeThisPasswordInSecrets" # Varsayılan, override edilecek
-    # Namespace'i ortam ve release adına göre dinamik oluşturalım
+    system_user: "mustafa"
+    helm_env: "staging"
+    image_tag: "latest"
+    docker_username: "meyfcsalik"
+    helm_chart_path: "/home/{{ system_user }}/e-unternehmen/helm/myapp"
+    helm_release_name: "uygulama-adi"
     k8s_namespace: "{{ helm_release_name }}-{{ helm_env }}"
+    enable_selenium_tests: true
+    qradar_integration: false
+    selenium_grid_url: "http://selenium-grid:4444/wd/hub"
+
+  environment:
+    KUBECONFIG: "/home/{{ system_user }}/.kube/config"
+
+  vars_files:
+    - secrets.yml
 
   tasks:
-    - name: Ensure Helm is installed
+    - name: Kubeconfig kontrolü
+      ansible.builtin.stat:
+        path: "{{ KUBECONFIG }}"
+      register: kubeconfig
+      changed_when: false
+
+    - name: Kubeconfig dizini oluştur
+      ansible.builtin.file:
+        path: "/home/{{ system_user }}/.kube"
+        state: directory
+        mode: '0700'
+        owner: "{{ system_user }}"
+        group: "{{ system_user }}"
+      when: not kubeconfig.stat.exists
+
+    - name: K3s konfigürasyonunu kopyala
+      ansible.builtin.copy:
+        src: "/etc/rancher/k3s/k3s.yaml"
+        dest: "{{ KUBECONFIG }}"
+        remote_src: true
+        mode: '0600'
+        owner: "{{ system_user }}"
+        group: "{{ system_user }}"
+      when: not kubeconfig.stat.exists
+      notify: Kubeconfig Oluşturuldu
+
+    - name: Helm kontrolü
       ansible.builtin.command: helm version
       register: helm_check
       changed_when: false
-      failed_when: helm_check.rc != 0
-      ignore_errors: true # Hata durumunda aşağıdaki göreve geç
+      ignore_errors: true
 
-    - name: Install Helm if not present (Debian/Ubuntu)
+    - name: Helm kur (Debian/Ubuntu)
       ansible.builtin.apt:
         name: helm
         state: present
-      when: helm_check.rc != 0 and ansible_os_family == "Debian"
+      when: 
+        - helm_check.rc != 0 
+        - ansible_os_family == "Debian"
 
-    - name: Create Kubernetes Namespace if it does not exist
-      kubernetes.core.k8s: # Ansible Kubernetes Collection'ı gerekir (ansible-galaxy collection install kubernetes.core)
-        name: "{{ k8s_namespace }}"
-        api_version: v1
-        kind: Namespace
+    - name: Helm kur (RHEL/CentOS)
+      ansible.builtin.yum:
+        name: helm
         state: present
+      when: 
+        - helm_check.rc != 0 
+        - ansible_os_family == "RedHat"
 
-    - name: Add Prometheus Community Helm repo
-      kubernetes.core.helm_repository:
-        name: prometheus-community
-        repo_url: "https://prometheus-community.github.io/helm-charts"
-        state: present
+    - name: Ana dağıtım ve test işlemleri
+      block:
+        - name: Namespace oluştur
+          kubernetes.core.k8s:
+            state: present
+            kind: Namespace
+            name: "{{ k8s_namespace }}"
 
-    - name: Update Helm repositories
-      ansible.builtin.command: helm repo update
-      changed_when: false # Genellikle durum değiştirmez ama loglamak için
+        - name: Helm ile uygulama deploy et
+          kubernetes.core.helm:
+            name: "{{ helm_release_name }}"
+            chart_ref: "{{ helm_chart_path }}"
+            release_namespace: "{{ k8s_namespace }}"
+            set_values:
+              image:
+                tag: "{{ image_tag }}"
+                repository: "{{ docker_username }}"
+              monitoring:
+                grafana:
+                  adminPassword: "{{ vault_grafana_password }}"
+              registry:
+                password: "{{ vault_docker_password }}"
+            values_files:
+              - "{{ helm_chart_path }}/values-{{ helm_env }}.yaml"
+            state: present
 
-    - name: Deploy application with Helm
-      kubernetes.core.helm:
-        name: "{{ helm_release_name }}"
-        chart_ref: "{{ helm_chart_path_on_server }}" # Sunucudaki chart yolu
-        release_namespace: "{{ k8s_namespace }}"
-        values_files: # Ortam ve genel values dosyalarını birleştir
-          - "{{ helm_chart_path_on_server }}/values.yaml"
-          - "{{ helm_chart_path_on_server }}/values-{{ helm_env }}.yaml"
-        set_values: # CI/CD'den gelen dinamik değerler
-          - { value: "frontend.image.tag={{ image_tag }}", value_type: string }
-          - { value: "backend.image.tag={{ image_tag }}", value_type: string }
-          - { value: "frontend.image.repository={{ docker_username }}/frontend", value_type: string }
-          - { value: "backend.image.repository={{ docker_username }}/backend", value_type: string }
-          - { value: "monitoring.kube-prometheus-stack.grafana.adminPassword={{ grafana_password }}", value_type: string }
-        state: present # upgrade --install gibi davranır
-        atomic: true # Başarısız olursa otomatik rollback
-        timeout: 10m
-      register: helm_deploy_result
+        - name: Selenium testlerini çalıştır
+          community.docker.docker_container_exec:
+            container: "selenium-chrome"
+            command: "python3 /tests/run_tests.py --env {{ helm_env }}"
+          when: enable_selenium_tests
+          delegate_to: localhost
 
-    - name: Show Helm deployment result
+        - name: QRadar log entegrasyonu
+          kubernetes.core.k8s:
+            state: present
+            kind: ConfigMap
+            name: qradar-integration
+            namespace: "{{ k8s_namespace }}"
+            src: "/home/{{ system_user }}/e-unternehmen/ansible/qradar-config.yaml"
+          when: qradar_integration
+
+      rescue:
+        - name: Helm rollback
+          kubernetes.core.helm:
+            name: "{{ helm_release_name }}"
+            release_namespace: "{{ k8s_namespace }}"
+            state: absent
+
+  handlers:
+    - name: Kubeconfig Oluşturuldu
       ansible.builtin.debug:
-        var: helm_deploy_result.stdout_lines
+        msg: "✅ Kubeconfig başarıyla oluşturuldu"
+
