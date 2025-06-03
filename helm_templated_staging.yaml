@@ -1,0 +1,295 @@
+---
+# Source: myapp/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: myapp-staging
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: true
+---
+# Source: myapp/templates/mongodb-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myapp-mongodb-pvc
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: mongodb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Source: myapp/templates/backend-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-staging-backend
+  labels:
+    
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+      name: http
+  selector:
+    
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/component: backend
+---
+# Source: myapp/templates/frontend-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-staging-frontend
+  labels:
+    
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: frontend
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+      nodePort: 30081
+  selector:
+    
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/component: frontend
+---
+# Source: myapp/templates/mongodb-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-mongodb  # values.yaml'daki service adıyla eşleşmeli
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: mongodb
+spec:
+  type: ClusterIP
+  ports:
+    - port: 27017
+      targetPort: mongodb  # Deployment'taki container port adı
+      protocol: TCP
+      name: mongodb
+  selector:
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/component: mongodb
+---
+# Source: myapp/templates/backend-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-staging-backend
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+      app.kubernetes.io/instance: myapp-staging
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: myapp
+        app.kubernetes.io/instance: myapp-staging
+        app.kubernetes.io/component: backend
+    spec:
+      serviceAccountName: myapp-staging
+      containers:
+        - name: backend
+          image: "yourdockerhubusername/backend:1.0.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000 # values.yaml'daki backend targetPort
+              protocol: TCP
+          env:
+            - name: MONGO_URL
+              value: mongodb://myapp-mongodb:27017/myappdb_staging
+            # Diğer ortam değişkenleri buraya eklenebilir
+          livenessProbe:
+            httpGet:
+              path: /healthz # Backend uygulamanızdaki health check path'i
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz # Backend uygulamanızdaki readiness check path'i
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+# Source: myapp/templates/frontend-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-staging-frontend # İsimlendirme için helper kullanmak daha iyi
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm # Deployment'a standart etiketleri ekle
+    app.kubernetes.io/component: frontend     # Komponent etiketini ekle
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+      app.kubernetes.io/instance: myapp-staging # Pod'ları seçmek için standart etiketler
+      app.kubernetes.io/component: frontend             # Komponent etiketini ekle
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: myapp
+        app.kubernetes.io/instance: myapp-staging # POD'LARA standart etiketleri ekle
+        app.kubernetes.io/component: frontend             # Komponent etiketini ekle
+        # Eski 'app: frontend' etiketi yerine bunlar kullanılacak
+    spec:
+      serviceAccountName: myapp-staging # Oluşturduğumuz SA'yı kullansın
+      containers:
+        - name: frontend
+          image: "yourdockerhubusername/frontend:1.0.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http # Porta isim vermek iyi bir pratiktir
+              containerPort: 80 # values.yaml'daki frontend targetPort
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: myapp/templates/mongodb-deployment.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: myapp-staging-mongodb # Veya values.yaml'dan gelen bir isim
+  labels:
+    helm.sh/chart: myapp-0.1.0
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-staging
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: mongodb
+spec:
+  serviceName: myapp-mongodb # MongoDB servisin adı
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+      app.kubernetes.io/instance: myapp-staging
+      app.kubernetes.io/component: mongodb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: myapp
+        app.kubernetes.io/instance: myapp-staging
+        app.kubernetes.io/component: mongodb
+    spec:
+      serviceAccountName: myapp-staging
+      containers:
+        - name: mongodb
+          image: "mongo:6.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: mongodb # Bu isim mongodb-service.yaml'daki targetPort ile eşleşebilir
+              containerPort: 27017 # MongoDB'nin dinlediği port
+              protocol: TCP
+          # Ortam değişkenleri (MONGO_INITDB_ROOT_USERNAME, MONGO_INITDB_ROOT_PASSWORD vb. Secret'lardan alınmalı)
+          # env:
+          # - name: MONGO_INITDB_ROOT_USERNAME
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: myapp-staging-mongodb-secret
+          #       key: mongodb-root-username
+          # - name: MONGO_INITDB_ROOT_PASSWORD
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: myapp-staging-mongodb-secret
+          #       key: mongodb-root-password
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db # MongoDB'nin veri yazdığı dizin
+          resources:
+            limits:
+              cpu: 250m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes: # Bu bölüm doğrudan StatefulSet spec altında DEĞİL, template.spec.volumes altında olmalıydı.
+               # StatefulSet'lerde volumeClaimTemplates kullanılır.
+      # Bu kısım hatalı, aşağıdaki volumeClaimTemplates kullanılmalı
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data
+      spec:
+        accessModes: 
+            - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

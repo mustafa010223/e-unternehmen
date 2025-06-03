@@ -114,6 +114,6 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: "yourdockerhubusername/frontend:"
+          image: "meyfcsalik/frontend:"
           ports:
             - containerPort: 80
