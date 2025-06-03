@@ -1,104 +1,176 @@
-# values.yaml - Varsayılan Değerler
+# helm/myapp/values.yaml
 
+# Genel Uygulama Ayarları
 replicaCount: 1
-
 imagePullSecrets: []
-# - name: myregistrykey
+nameOverride: ""
+fullnameOverride: ""
 
 serviceAccount:
-  # Oluşturulup oluşturulmayacağını belirtir.
-  # Eğer true ise, name alanında belirtilen isimde bir ServiceAccount oluşturulur.
-  # Eğer false ise, aşağıdaki name alanında belirtilen mevcut bir ServiceAccount kullanılır.
   create: true
-  # Eğer create false ise veya özel bir isim vermek istemiyorsanız bu alan boş bırakılabilir,
-  # o zaman 'default' service account kullanılır veya helper'daki mantığa göre bir isim üretilir.
-  name: "" # Otomatik isim için boş bırakın veya özel bir isim verin
   annotations: {}
-  # automountServiceAccountToken: true
+  name: ""
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# Frontend Ayarları
 frontend:
+  name: frontend
+  replicaCount: 1
   image:
-    repository: meyfcsalik/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
+    repository: meyfcsalik/frontend
     pullPolicy: IfNotPresent
-    # tag: "" # CI/CD tarafından override edilecek
-  replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir
+    tag: "" # CI/CD'den override edilecek, varsayılan: .Chart.AppVersion
   service:
     type: NodePort
-    port: 80 # Service'in dinleyeceği port
-    targetPort: 80 # Frontend container'ının (Nginx) dinlediği port
-    nodePort: 30081 # Dışarıdan erişim için NodePort
-  resources: {}
-  #  requests:
-  #    cpu: 100m
-  #    memory: 128Mi
-  #  limits:
-  #    cpu: 500m
-  #    memory: 256Mi
-  livenessProbe:
-    httpGet:
-      path: /
-      port: http
-    initialDelaySeconds: 5
-    periodSeconds: 10
-  readinessProbe:
-    httpGet:
-      path: /
-      port: http
-    initialDelaySeconds: 5
-    periodSeconds: 10
-
-backend:
-  image:
-    repository: meyfcsalik/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
-    pullPolicy: IfNotPresent
-    # tag: "" # CI/CD tarafından override edilecek
-  replicaCount: 1 # Ortam bazlı values dosyasında override edilebilir
-  service:
-    type: ClusterIP
-    port: 5000 # Service'in dinleyeceği port
-    targetPort: 5000 # Backend container'ının dinlediği port
-  # Ortam değişkenleri. Secret'lardan almak daha güvenlidir.
-  env:
-    MONGO_URL: "mongodb://myapp-mongodb:27017/myappdb" # MongoDB service adına göre ayarla
-    # EXAMPLE_VAR: "example_value"
+    port: 80
+    targetPort: 80 # Sayısal porta geçmek daha net olabilir
+    # Eğer targetPort: http ise, deployment'ta container port name: http olmalı
+    nodePort: 30081
   resources: {}
   livenessProbe:
     httpGet:
-      path: /healthz
-      port: http
+      path: /
+      port: 80 # targetPort sayısal ise bu da sayısal olmalı
     initialDelaySeconds: 15
     periodSeconds: 20
   readinessProbe:
     httpGet:
-      path: /readyz
-      port: http
-    initialDelaySeconds: 10
-    periodSeconds: 15
+      path: /
+      port: 80 # targetPort sayısal ise bu da sayısal olmalı
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80" # Frontend uygulamasının metrik sunduğu port (eğer sunuyorsa)
+    prometheus.io/path: "/metrics" # Frontend uygulamasının metrik sunduğu path (eğer sunuyorsa)
 
+# Backend Ayarları
+backend:
+  name: backend
+  replicaCount: 1
+  image:
+    repository: meyfcsalik/backend
+    pullPolicy: IfNotPresent
+    tag: "" # CI/CD'den override edilecek, varsayılan: .Chart.AppVersion
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000 # Sayısal porta geçmek daha net olabilir
+  env:
+    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-{{ .Values.mongodb.name }}:27017/myapp_default" # MongoDB component adına göre güncellendi
+    NODE_ENV: "development"
+  resources: {}
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 5000 # targetPort sayısal ise bu da sayısal olmalı
+    initialDelaySeconds: 30
+    periodSeconds: 15
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 5000 # targetPort sayısal ise bu da sayısal olmalı
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "5000"
+    prometheus.io/path: "/metrics"
+
+# MongoDB Ayarları
 mongodb:
+  name: mongodb
+  replicaCount: 1
   image:
     repository: mongo
-    tag: "6.0" # İstediğiniz bir MongoDB versiyonu
     pullPolicy: IfNotPresent
-  replicaCount: 1
+    tag: "6.0"
   service:
-    name: myapp-mongodb # Backend'in bağlanacağı service adı
-    type: ClusterIP
+    # serviceName StatefulSet'in serviceName alanı ile eşleşmeli (Headless service için)
+    # Bu genellikle component adı ile birleştirilmiş fullname olur.
+    name: "{{ include \"myapp.fullname\" . }}-{{ .Values.mongodb.name }}"
+    type: ClusterIP # Headless service için ClusterIP ve clusterIP: None kullanılır. Normal service için ClusterIP.
     port: 27017
-    targetPort: 27017
-  # MongoDB için kullanıcı adı ve şifre. KESİNLİKLE Secret ile yönetilmeli!
-  # auth:
-  #   rootUser: ""
-  #   rootPassword: ""
-  #   username: ""
-  #   password: ""
-  #   database: "myappdb"
+    # clusterIP: None # Eğer bu bir Headless Service ise (StatefulSet serviceName için)
+  
+  auth:
+    # Eğer var olan bir Secret kullanmak isterseniz, adını buraya yazın.
+    # Boş bırakılırsa, chart yeni bir Secret oluşturmaya çalışır (templates/secret-mongodb.yaml varsayımıyla).
+    existingSecret: "" 
+    # Yeni Secret oluşturulacaksa kullanılacak değerler (templates/secret-mongodb.yaml bunları kullanır)
+    rootUser: "admin"
+    # rootPassword: "" # Boş bırakırsanız, secret şablonu randAlphaNum ile rastgele parola üretebilir.
+                      # Güvenlik için CI/CD'den veya dış bir secret yönetim aracından gelmesi en iyisidir.
+    # Secret içinde kullanıcı adı ve parolanın hangi key'ler altında saklanacağı
+    usernameKey: "mongodb-root-username"
+    passwordKey: "mongodb-root-password"
+    # replicaSet:
+    #   enabled: false
+    #   name: "rs0"
+
   persistence:
     enabled: true
-    # storageClass: "-" # "-" varsayılan storage class'ı kullanır.
     accessModes:
       - ReadWriteOnce
-    size: 1Gi # Ortam bazlı values dosyasında override edilebilir
+    size: 1Gi
+    storageClass: "" # "-" veya boş bırakılabilir
+    # annotations: {}
   resources: {}
-  #  requests:
-  #    cpu: 100m
-  #    memory: 256Mi
+    # requests:
+    #   memory: "256Mi"
+    #   cpu: "250m"
+    # limits:
+    #   memory: "512Mi"
+    #   cpu: "500m"
+  
+  # Problar values.yaml'dan yönetilecekse:
+  livenessProbe:
+    tcpSocket:
+      port: mongodb # StatefulSet container port adı
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    exec:
+      command:
+        - mongo
+        - --eval
+        - "db.adminCommand('ping')"
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 6
+
+# Ingress Ayarları
+ingress:
+  enabled: false
+
+# Monitoring (kube-prometheus-stack) Ayarları
+monitoring:
+  enabled: false
+  kube-prometheus-stack:
+    namespace: monitoring
+    grafana:
+      service:
+        type: NodePort
+        port: 80
+        nodePort: 30000
+      # adminPassword: "" # CI/CD'den --set ile güvenli bir şekilde sağlanacak
+    prometheus:
+      prometheusSpec:
+        podMonitorSelectorNilUsesHelmValues: false
+        serviceMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        # retention: "15d"

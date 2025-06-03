@@ -1,41 +1,50 @@
-# values-staging.yaml - Staging Ortamı İçin Değerler
+# Ortam Adı
+environment: staging
 
 frontend:
   replicaCount: 1
   image:
-    repository: yourdockerhubusername/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
-    # tag: "staging-latest" # CI/CD tarafından dinamik olarak set edilecek
+    tag: "staging-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
   resources:
     requests:
-      cpu: 50m
-      memory: 64Mi
+      cpu: "50m"
+      memory: "64Mi"
     limits:
-      cpu: 100m
-      memory: 128Mi
+      cpu: "100m"
+      memory: "128Mi"
 
 backend:
   replicaCount: 1
   image:
-    repository: yourdockerhubusername/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
-    # tag: "staging-latest" # CI/CD tarafından dinamik olarak set edilecek
+    tag: "staging-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+  env:
+    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-mongodb:27017/myapp_staging"
+    NODE_ENV: "staging"
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: "100m"
+      memory: "128Mi"
     limits:
-      cpu: 200m
-      memory: 256Mi
-  env:
-    MONGO_URL: "mongodb://myapp-mongodb:27017/myappdb_staging" # Staging DB adı
+      cpu: "200m"
+      memory: "256Mi"
 
 mongodb:
-  replicaCount: 1
   persistence:
-    size: 1Gi # Staging için daha küçük disk boyutu
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 250m
-      memory: 512Mi
+    size: "2Gi"
+
+monitoring:
+  enabled: true # Staging'de izlemeyi aktif et
+  kube-prometheus-stack:
+    prometheus:
+      prometheusSpec:
+        replicas: 1
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+    grafana:
+      # adminPassword: "" # CI/CD'den gelecek
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"

@@ -1,23 +1,34 @@
 {{- if .Values.mongodb.persistence.enabled }}
+{{- /* DİKKAT: Eğer MongoDB için StatefulSet ve içindeki 'volumeClaimTemplates' kullanılıyorsa,
+  MongoDB'nin ana veri hacmi için bu ayrı PVC'ye genellikle ihtiyaç yoktur.
+  Bu şablon, özel bir durumunuz yoksa gereksiz olabilir.
+*/}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ .Values.mongodb.service.name }}-pvc
+  # İsimlendirme için values.yaml'dan gelen değeri veya bir helper kullanabilirsiniz.
+  # Örnek: {{ include "myapp.fullname" . }}-{{ .Values.mongodb.name }}-custom-pvc
+  name: {{ .Values.mongodb.service.name | default (printf "%s-%s" (include "myapp.fullname" .) .Values.mongodb.name) }}-pvc
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
-    app.kubernetes.io/component: mongodb
+    app.kubernetes.io/component: {{ .Values.mongodb.name }}
+  {{- with .Values.mongodb.persistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   accessModes:
-    - {{ .Values.mongodb.persistence.accessModes | join "\n    - " }}
+    {{- range .Values.mongodb.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
   resources:
     requests:
       storage: {{ .Values.mongodb.persistence.size }}
   {{- if .Values.mongodb.persistence.storageClass }}
   {{- if (eq "-" .Values.mongodb.persistence.storageClass) }}
-  storageClassName: ""
+  storageClassName: "" # Varsayılan StorageClass'ı kullan
   {{- else }}
   storageClassName: "{{ .Values.mongodb.persistence.storageClass }}"
   {{- end }}
   {{- end }}
 {{- end }}
-

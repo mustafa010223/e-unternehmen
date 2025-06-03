@@ -4,43 +4,49 @@ metadata:
   name: {{ include "myapp.fullname" . }}-backend
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
-    app.kubernetes.io/component: backend
+    app.kubernetes.io/component: {{ .Values.backend.name }}
 spec:
-  replicas: {{ .Values.backend.replicaCount | default 1 }}
+  replicas: {{ .Values.backend.replicaCount }}
   selector:
     matchLabels:
       {{- include "myapp.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: backend
+      app.kubernetes.io/component: {{ .Values.backend.name }}
   template:
     metadata:
+      annotations:
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "myapp.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: backend
+        app.kubernetes.io/component: {{ .Values.backend.name }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: backend
+        - name: {{ .Values.backend.name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.backend.service.targetPort | default 5000 }} # values.yaml'daki backend targetPort
+              containerPort: {{ .Values.backend.service.targetPort | default 5000 }} # values.yaml'daki targetPort
               protocol: TCP
           env:
             - name: MONGO_URL
-              value: {{ .Values.backend.env.MONGO_URL }}
-            # Diğer ortam değişkenleri buraya eklenebilir
+              value: {{ .Values.backend.env.MONGO_URL | quote }}
+            - name: NODE_ENV
+              value: {{ .Values.backend.env.NODE_ENV | quote }}
+            # Diğer env değişkenleri buraya eklenebilir
           livenessProbe:
-            httpGet:
-              path: /healthz # Backend uygulamanızdaki health check path'i
-              port: http
-            initialDelaySeconds: 15
-            periodSeconds: 20
+            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
           readinessProbe:
-            httpGet:
-              path: /readyz # Backend uygulamanızdaki readiness check path'i
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 15
+            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
