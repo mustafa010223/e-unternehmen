@@ -17,3 +17,4 @@ vault_ssl_cert: |
 ## vault_staging_db_creds:
 ## username: "dev_user"
 ##  password: "T3mP!Pass"
+## deneme icin yazdim
