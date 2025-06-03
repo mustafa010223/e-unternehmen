@@ -1,31 +1,42 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "myapp.fullname" . }}-frontend # İsimlendirme için helper kullanmak daha iyi
+  name: {{ include "myapp.fullname" . }}-frontend
   labels:
-    {{- include "myapp.labels" . | nindent 4 }} # Deployment'a standart etiketleri ekle
-    app.kubernetes.io/component: frontend     # Komponent etiketini ekle
+    {{- include "myapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ .Values.frontend.name }}
 spec:
-  replicas: {{ .Values.frontend.replicaCount | default 1 }}
+  replicas: {{ .Values.frontend.replicaCount }}
   selector:
     matchLabels:
-      {{- include "myapp.selectorLabels" . | nindent 6 }} # Pod'ları seçmek için standart etiketler
-      app.kubernetes.io/component: frontend             # Komponent etiketini ekle
+      {{- include "myapp.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: {{ .Values.frontend.name }}
   template:
     metadata:
+      annotations:
+        {{- with .Values.frontend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
-        {{- include "myapp.selectorLabels" . | nindent 8 }} # POD'LARA standart etiketleri ekle
-        app.kubernetes.io/component: frontend             # Komponent etiketini ekle
-        # Eski 'app: frontend' etiketi yerine bunlar kullanılacak
+        {{- include "myapp.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: {{ .Values.frontend.name }}
     spec:
-      serviceAccountName: {{ include "myapp.serviceAccountName" . }} # Oluşturduğumuz SA'yı kullansın
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: frontend
+        - name: {{ .Values.frontend.name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
-            - name: http # Porta isim vermek iyi bir pratiktir
-              containerPort: 80 # values.yaml'daki frontend targetPort
+            - name: http
+              containerPort: {{ .Values.frontend.service.targetPort | default 80 }} # values.yaml'daki targetPort http ise, buradaki containerPort 80 olmalı (veya frontend'in dinlediği port)
               protocol: TCP
           livenessProbe:
             {{- toYaml .Values.frontend.livenessProbe | nindent 12 }}

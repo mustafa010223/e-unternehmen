@@ -6,7 +6,9 @@ metadata:
     {{- include "myapp.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ .Values.mongodb.name }}
 spec:
-  serviceName: {{ .Values.mongodb.service.name | default (printf "%s-%s" (include "myapp.fullname" .) .Values.mongodb.name) }}
+  # serviceName, pod'lara kararlı ağ kimlikleri (DNS) sağlamak için gereklidir.
+  # Bu, MongoDB Headless Servisinizin adına işaret etmelidir.
+  serviceName: {{ .Values.mongodb.headlessServiceName | default (printf "%s-%s-headless" (include "myapp.fullname" .) .Values.mongodb.name) }}
   replicas: {{ .Values.mongodb.replicaCount }}
   selector:
     matchLabels:
@@ -17,6 +19,8 @@ spec:
       labels:
         {{- include "myapp.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: {{ .Values.mongodb.name }}
+      # Eğer MongoDB metriklerini bir exporter ile topluyorsanız,
+      # podAnnotations buraya eklenebilir.
       # annotations:
       #   prometheus.io/scrape: "true"
       #   prometheus.io/port: "9216" # MongoDB exporter portu
@@ -35,13 +39,17 @@ spec:
           image: "{{ .Values.mongodb.image.repository }}:{{ .Values.mongodb.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.mongodb.image.pullPolicy }}
           ports:
-            - name: mongodb
-              containerPort: 27017
+            - name: mongodb # Service'teki targetPort ile eşleşebilir
+              containerPort: 27017 # MongoDB'nin varsayılan portu
               protocol: TCP
           env:
+            # ÖNEMLİ: MONGO_INITDB_ROOT_USERNAME ve MONGO_INITDB_ROOT_PASSWORD
+            # gibi hassas veriler kesinlikle Kubernetes Secret'larından alınmalıdır.
             - name: MONGO_INITDB_ROOT_USERNAME
               valueFrom:
                 secretKeyRef:
+                  # Secret adınız (örneğin: {{ include "myapp.fullname" . }}-mongodb-credentials)
+                  # Bu secret'ı ayrıca templates/ altına bir secret.yaml dosyası ile oluşturmanız önerilir.
                   name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "myapp.fullname" .)) }}
                   key: {{ .Values.mongodb.auth.usernameKey | default "mongodb-root-username" }}
             - name: MONGO_INITDB_ROOT_PASSWORD
@@ -49,13 +57,15 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "myapp.fullname" .)) }}
                   key: {{ .Values.mongodb.auth.passwordKey | default "mongodb-root-password" }}
+            # Diğer MongoDB yapılandırma ortam değişkenleri buraya eklenebilir
+            # Örneğin: MONGO_OPLOG_SIZE, MONGO_REPLICA_SET_NAME vb.
             # {{- if .Values.mongodb.auth.replicaSet.enabled }}
             # - name: MONGO_REPLICA_SET_NAME
             #   value: {{ .Values.mongodb.auth.replicaSet.name | quote }}
             # {{- end }}
           volumeMounts:
-            - name: mongodb-data
-              mountPath: /data/db
+            - name: mongodb-data # Bu isim aşağıdaki volumeClaimTemplates.metadata.name ile eşleşmelidir
+              mountPath: /data/db # MongoDB'nin veri yazdığı standart dizin
           resources:
             {{- toYaml .Values.mongodb.resources | nindent 12 }}
           livenessProbe:
@@ -65,7 +75,7 @@ spec:
   {{- if .Values.mongodb.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
-        name: mongodb-data
+        name: mongodb-data # volumeMounts.name ile eşleşmelidir
         labels:
           {{- include "myapp.selectorLabels" . | nindent 10 }}
           app.kubernetes.io/component: {{ .Values.mongodb.name }}
@@ -81,7 +91,7 @@ spec:
             storage: {{ .Values.mongodb.persistence.size }}
         {{- if .Values.mongodb.persistence.storageClass }}
         {{- if (eq "-" .Values.mongodb.persistence.storageClass) }}
-        storageClassName: ""
+        storageClassName: "" # Varsayılan StorageClass'ı kullanmak için
         {{- else }}
         storageClassName: "{{ .Values.mongodb.persistence.storageClass }}"
         {{- end }}

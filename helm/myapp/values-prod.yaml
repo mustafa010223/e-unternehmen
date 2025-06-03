@@ -1,47 +1,57 @@
-# values-prod.yaml - Production Ortamı İçin Değerler
+# Ortam Adı
+environment: production
 
 frontend:
-  replicaCount: 2 # Production için daha fazla replica
+  replicaCount: 2 # Üretimde daha fazla replica
   image:
-    repository: yourdockerhubusername/frontend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
-    # tag: "production-latest" # CI/CD tarafından dinamik olarak set edilecek
+    tag: "production-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: "100m"
+      memory: "128Mi"
     limits:
-      cpu: 250m
-      memory: 256Mi
+      cpu: "200m"
+      memory: "256Mi"
 
 backend:
-  replicaCount: 2 # Production için daha fazla replica
+  replicaCount: 2
   image:
-    repository: yourdockerhubusername/backend # KENDİ DOCKER HUB KULLANICI ADINLA DEĞİŞTİR
-    # tag: "production-latest" # CI/CD tarafından dinamik olarak set edilecek
+    tag: "production-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+  env:
+    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-mongodb:27017/myapp_production"
+    NODE_ENV: "production"
   resources:
     requests:
-      cpu: 200m
-      memory: 256Mi
+      cpu: "200m"
+      memory: "256Mi"
     limits:
-      cpu: 500m
-      memory: 512Mi
-  env:
-    MONGO_URL: "mongodb://myapp-mongodb:27017/myappdb_prod" # Production DB adı
-    # Production'a özel diğer ortam değişkenleri
-    # NODE_ENV: "production"
+      cpu: "500m"
+      memory: "512Mi"
 
 mongodb:
-  replicaCount: 1 # Tek node MongoDB, production için replicaSet düşünülebilir
+  replicaCount: 1 # Production için replikasyonlu bir MongoDB kurulumu (örn: Bitnami chart'ı) daha iyi olabilir.
+                  # Şimdilik tek replica StatefulSet.
   persistence:
-    size: 5Gi # Production için daha büyük disk boyutu
-  # Production MongoDB için auth kesinlikle etkinleştirilmeli ve secret'lar kullanılmalı
-  # auth:
-  #   rootUser: ... (secret'tan)
-  #   rootPassword: ... (secret'tan)
-  resources:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
-      cpu: 1000m # 1 core
-      memory: 1Gi
+    size: "10Gi"
+
+monitoring:
+  enabled: true # Üretimde izlemeyi aktif et
+  kube-prometheus-stack:
+    # adminPassword CI/CD'den gelecek
+    prometheus:
+      prometheusSpec:
+        replicas: 1 # Üretim için 2 veya daha fazla replica ve yeterli kaynak ayırın
+        retention: "30d"
+        resources:
+          requests:
+            cpu: "1"
+            memory: "4Gi"
+          limits:
+            cpu: "2"
+            memory: "8Gi"
+    grafana:
+      # adminPassword: "" # CI/CD'den gelecek
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"

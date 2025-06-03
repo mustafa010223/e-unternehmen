@@ -13,7 +13,9 @@ on:
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik
-  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen
+  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # K3s sunucunuzdaki proje yolu
+  HELM_CHART_PATH: helm/myapp # Chart'ınızın yolu (proje köküne göre)
+  HELM_RELEASE_NAME: myapp # Helm release adı
 
 jobs:
   test-and-build:
@@ -22,8 +24,8 @@ jobs:
     outputs:
       image_tag: ${{ steps.vars.outputs.sha_short }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-      docker_repo_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend
-      docker_repo_backend: ${{ env.DOCKERHUB_USERNAME }}/backend
+      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
     services:
       mongodb_test:
         image: mongo:6.0
@@ -42,7 +44,7 @@ jobs:
             frontend/package-lock.json
             backend/package-lock.json
 
-      - name: Set Output Variables (Commit SHA)
+      - name: Set Output Variables (Commit SHA & Environment)
         id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
@@ -54,19 +56,18 @@ jobs:
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           elif [[ "${{ github.base_ref }}" == "main" && "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
+            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT # PR'lar için test/build amacıyla
           elif [[ "${{ github.base_ref }}" == "develop" && "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
+            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT # PR'lar için test/build amacıyla
           else
-            # Default to staging for other cases like workflow_dispatch on a specific branch or PRs to other branches
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
+            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT # Diğer durumlar için varsayılan
           fi
         shell: bash
 
       - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
         run: |
-          npm install
+          npm ci
           npm run lint --if-present
 
       - name: Frontend - Run Tests
@@ -80,25 +81,22 @@ jobs:
       - name: Backend - Install Dependencies & Lint
         working-directory: ./backend
         run: |
-          npm install
+          npm ci
           npm run lint --if-present
 
       - name: Backend - Run Tests
         working-directory: ./backend
         run: npm test --if-present -- --watchAll=false --coverage
         env:
-          MONGO_URL: mongodb://mongodb_test:27017/myapp_test # For backend tests
+          MONGO_URL: mongodb://mongodb_test:27017/myapp_test
 
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
-        # Run only on pushes to main/develop or PRs to main/develop, avoid on merge commits from PRs
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'develop'))
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before || github.event.repository.default_branch }}
           head: ${{ github.event.pull_request.head.sha || github.sha }}
-          # Optional: Add --fail if you want the workflow to fail on found secrets
-          # args: --fail
 
       - name: Audit NPM Dependencies (Frontend)
         working-directory: ./frontend
@@ -113,7 +111,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }} # Docker Hub token'ınız
 
       - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
@@ -126,7 +124,6 @@ jobs:
             ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
-          # Optional: Add build arguments, cache settings, etc.
 
       - name: Build and Push Backend Docker Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
@@ -139,21 +136,19 @@ jobs:
             ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.vars.outputs.sha_short }}
             ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
-          # Optional: Add build arguments, cache settings, etc.
 
   deploy:
     name: Deploy to K3s using Ansible
     needs: test-and-build
-    # Run only when pushing to main or develop branches, not on PRs.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted # Ensure your self-hosted runner is configured and active
+    runs-on: self-hosted # Kendi runner'ınızda çalışacak
     environment:
-      name: ${{ needs.test-and-build.outputs.deploy_env }} # Sets up environment secrets if configured in GitHub
+      name: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repository (on runner)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }} # Ensure we deploy the exact commit that was pushed
+          ref: ${{ github.sha }} # Deploy edilecek kesin commit
 
       - name: Deploy to K3s via SSH using Ansible
         uses: appleboy/ssh-action@v1.0.3
@@ -161,11 +156,21 @@ jobs:
           host: ${{ secrets.K3S_HOST_IP }}
           username: ${{ secrets.K3S_USER }}
           key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
-          # Optional: port, passphrase for key if needed
           script: |
+            set -e # Herhangi bir komut hata verirse script'i durdur
+            echo "--- Updating project repository on K3s server ---"
             cd ${{ env.K3S_SERVER_PROJECT_PATH }}
             git fetch --all
-            git checkout ${{ github.sha }} # Checkout the specific commit on the server
-            # Ensure Ansible and required collections are installed on the self-hosted runner or target host
-            # The playbook already handles some installations, but ansible itself should be present
-            ansible-playbook ansible/deploy.yml --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} image_tag=${{ needs.test-and-build.outputs.image_tag }} docker_username=${{ env.DOCKERHUB_USERNAME }}"
+            git checkout ${{ github.sha }} # Sunucuda da aynı commit'i checkout et
+            echo "--- Running Ansible Playbook for Helm Deployment ---"
+            ansible-playbook ansible/deploy.yml \
+              --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} \
+                            image_tag=${{ needs.test-and-build.outputs.image_tag }} \
+                            docker_username=${{ env.DOCKERHUB_USERNAME }} \
+                            helm_chart_path_on_server=${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }} \
+                            helm_release_name=${{ env.HELM_RELEASE_NAME }} \
+                            grafana_password=${{ secrets.GRAFANA_ADMIN_PASSWORD }}"
+            echo "--- Deployment finished ---"
+
+      # Opsiyonel: Helm Rollback mantığı burada eklenebilir
+      # Veya Ansible playbook içinde --atomic ile yönetilebilir

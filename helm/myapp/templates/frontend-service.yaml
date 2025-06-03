@@ -3,20 +3,18 @@ kind: Service
 metadata:
   name: {{ include "myapp.fullname" . }}-frontend
   labels:
-    {{ include "myapp.labels" . | nindent 4 }}
-    app.kubernetes.io/component: frontend
+    {{- include "myapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ .Values.frontend.name }}
 spec:
   type: {{ .Values.frontend.service.type }}
   ports:
     - port: {{ .Values.frontend.service.port }}
-      targetPort: http
+      targetPort: {{ .Values.frontend.service.targetPort | default "http" }} # containerPort adına veya sayısına referans
       protocol: TCP
       name: http
-      {{- if and (eq .Values.frontend.service.type "NodePort") (.Values.frontend.service.nodePort) }}
+      {{- if and (eq .Values.frontend.service.type "NodePort") .Values.frontend.service.nodePort }}
       nodePort: {{ .Values.frontend.service.nodePort }}
       {{- end }}
   selector:
-    {{ include "myapp.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: frontend
-
-
+    {{- include "myapp.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ .Values.frontend.name }}

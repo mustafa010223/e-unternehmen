@@ -137,7 +137,7 @@ spec:
       serviceAccountName: myapp-staging
       containers:
         - name: backend
-          image: "yourdockerhubusername/backend:1.0.0"
+          image: "meyfcsalik/backend:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -197,7 +197,7 @@ spec:
       serviceAccountName: myapp-staging # Oluşturduğumuz SA'yı kullansın
       containers:
         - name: frontend
-          image: "yourdockerhubusername/frontend:1.0.0"
+          image: "meyfcsalik/frontend:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http # Porta isim vermek iyi bir pratiktir

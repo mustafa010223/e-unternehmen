@@ -1,10 +1,21 @@
 apiVersion: v2
 name: myapp
-description: K3s CI/CD Projesi için Helm Chart
+description: K3s üzerinde çalışan Frontend, Backend ve MongoDB uygulamasının Helm chart'ı.
 type: application
+version: 0.1.0 # Chart versiyonunuz
+appVersion: "1.0.0" # Uygulama versiyonunuz
 
-# Bu, chart'ın versiyonudur. CI/CD ile artırılabilir.
-version: 0.1.0
+# Projenizin detayları (isteğe bağlı ama önerilir)
+home: https://github.com/meyfcsalik/your-project-repo # Projenizin GitHub URL'si
+sources:
+  - https://github.com/meyfcsalik/your-project-repo
+maintainers:
+  - name: Mustafa Salik # Adınız
+    email: your.email@example.com # E-postanız
 
-# Bu, chart tarafından deploy edilecek uygulamanın versiyonudur.
-appVersion: "1.0.0"
+dependencies:
+  - name: kube-prometheus-stack
+    version: "57.0.2" # Güncel ve stabil bir sürüm kullanın
+    repository: "https://prometheus-community.github.io/helm-charts"
+    # Sadece `monitoring.enabled=true` ise kurulmasını sağlar
+    condition: monitoring.enabled
