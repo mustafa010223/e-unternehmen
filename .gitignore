@@ -134,3 +134,4 @@ echo "actions-runner/_work/" >> .gitignore
 secrets.yml
 *.vault
 .vault_pass
+*.j2

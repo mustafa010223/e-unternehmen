@@ -1,0 +1,25 @@
+---
+- name: Güvenlik Denetimi ve Sertifika Kontrolü
+  hosts: all
+  become: yes
+  vars:
+    critical_paths:
+      - /etc/kubernetes/pki
+      - /etc/ansible
+      - /var/lib/kubelet
+  tasks:
+    - name: Kritik dosya izinlerini kontrol et
+      command: find {{ item }} -type f -perm /o=rwx
+      loop: "{{ critical_paths }}"
+      register: insecure_files
+      ignore_errors: yes
+
+    - name: Yetkisiz erişim uyarısı ver
+      fail:
+        msg: "GÜVENLİK AÇIĞI! {{ item.item }} yolunda public yazılabilir dosya: {{ item.stdout_lines }}"
+      loop: "{{ insecure_files.results }}"
+      when: item.stdout != ""
+
+    - name: Vault şifreleme durumunu doğrula
+      command: ansible-vault view secrets.yml --vault-password-file=vault_pass.txt
+      delegate_to: localhost
