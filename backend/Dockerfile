@@ -13,7 +13,7 @@ COPY . .
 
 EXPOSE 5000
 
-# Healthcheck instruction for Docker to verify container health
+# Healthcheck instruction for Docker to verify container health,
 # Kubernetes will use its own probes defined in the deployment YAML
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5000/healthz || exit 1

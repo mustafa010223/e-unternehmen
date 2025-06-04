@@ -1,0 +1,123 @@
+---
+- name: Helm ile Kubernetes Dağıtım ve Güvenlik Denetimi
+  hosts: k8s_cluster
+  become: true
+  vars_files:
+    - secrets.yml  # Ansible Vault ile şifrelenmiş dosya
+
+  vars:
+    helm_release_name: "prod-app"
+    k8s_namespace: "production"
+    helm_chart_path: "/charts/nginx"
+    enable_selenium_tests: true
+
+  tasks:
+    # 1. Helm Dağıtımı
+    - name: Helm chart'ı güncelle
+      kubernetes.core.helm:
+        name: "{{ helm_release_name }}"
+        chart_ref: "{{ helm_chart_path }}"
+        release_namespace: "{{ k8s_namespace }}"
+        create_namespace: yes
+        values_files:
+          - "{{ helm_chart_path }}/values-production.yaml"
+      tags: deploy
+
+    # 2. Güvenlik Politikaları
+    - name: Pod Security Admission (PSA) uygula
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: policy/v1beta1
+          kind: PodSecurityPolicy
+          metadata:
+            name: restricted-psp
+          spec:
+            privileged: false
+            seLinux:
+              rule: RunAsAny
+            runAsUser:
+              rule: MustRunAsNonRoot
+            fsGroup:
+              rule: RunAsAny
+            volumes:
+            - 'configMap'
+            - 'secret'
+      tags: security
+
+    # 3. Ağ Politikası
+    - name: Gelişmiş NetworkPolicy tanımla
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: allow-monitoring-only
+          spec:
+            podSelector: {}
+            policyTypes:
+            - Ingress
+            ingress:
+            - ports:
+              - protocol: TCP
+                port: 9100
+              from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+      tags: security
+
+    # 4. Test Otomasyonu
+    - name: Selenium test job'u başlat
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: "{{ helm_release_name }}-selenium-test"
+            namespace: "{{ k8s_namespace }}"
+          spec:
+            template:
+              spec:
+                containers:
+                - name: selenium-runner
+                  image: selenium/standalone-chrome
+                  command: ["/bin/sh", "-c"]
+                  args: 
+                    - "curl -LO https://test-scripts.example.com/suite.sh;
+                       chmod +x suite.sh;
+                       ./suite.sh {{ helm_release_name }}.svc.cluster.local"
+                restartPolicy: Never
+            backoffLimit: 0
+      when: enable_selenium_tests
+      tags: testing
+
+    # 5. Vault Şifre Rotasyonu
+    - name: Vault şifresini otomatik döndür
+      ansible.builtin.command: >
+        ansible-vault rekey secrets.yml
+        --new-vault-password-file /etc/ansible/vault_pass_new
+      args:
+        creates: /etc/ansible/vault_pass_new
+      run_once: true
+      tags: vault
+
+  post_tasks:
+    - name: Dağıtım başarısını doğrula
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ k8s_namespace }}"
+        label_selectors:
+          - app.kubernetes.io/instance={{ helm_release_name }}
+      register: deployment_pods
+
+    - name: Sağlık kontrolü
+      uri:
+        url: "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local/health"
+        return_content: yes
+      register: health_check
+      until: health_check.status == 200
+      retries: 10
+      delay: 5
+...
