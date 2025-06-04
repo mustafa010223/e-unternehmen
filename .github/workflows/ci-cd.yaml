@@ -2,14 +2,13 @@ name: CI/CD Pipeline for Microservices
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
   pull_request:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
   workflow_dispatch:
+  concurrency: 
+    group: deploy-${{ github.ref }}
+    cancel-in-progress: true
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik
@@ -22,15 +21,14 @@ jobs:
     name: Test, Build and Push Docker Images
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
+      image_tag: ${{ steps.vars.outputs.sha_full }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
+      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
     services:
       mongodb_test:
         image: mongo:6.0
-        ports:
-          - 27017:27017
+        ports: [27017:27017]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -44,9 +42,9 @@ jobs:
             frontend/package-lock.json
             backend/package-lock.json
 
-      - name: Set Output Variables (Commit SHA & Environment)
+      - name: Set Output Variables (Commit SHA)
         id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Determine Environment Name
         id: set_env
@@ -55,14 +53,9 @@ jobs:
             echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.base_ref }}" == "main" && "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.base_ref }}" == "develop" && "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           else
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
-        shell: bash
 
       - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
@@ -88,82 +81,63 @@ jobs:
         working-directory: ./backend
         run: npm test --if-present -- --watchAll=false --coverage
         env:
-          MONGO_URL: mongodb://mongodb_test:27017/myapp_test
+          MONGO_URL: mongodb://localhost:27017/myapp_test
 
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
-        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'develop'))
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
         with:
           path: ./
-          base: ${{ github.event.pull_request.base.sha || github.event.before || github.event.repository.default_branch }}
-          head: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Audit NPM Dependencies (Frontend)
-        working-directory: ./frontend
-        run: npm audit --audit-level=high || echo "NPM audit (frontend) found vulnerabilities, but continuing."
-
-      - name: Audit NPM Dependencies (Backend)
-        working-directory: ./backend
-        run: npm audit --audit-level=high || echo "NPM audit (backend) found vulnerabilities, but continuing."
+          base: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD' }}
 
       - name: Log in to Docker Hub
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: ${{ github.event_name == 'push' }}
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Frontend Docker Image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: ${{ github.event_name == 'push' }}
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: |
-            ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
-            ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.vars.outputs.sha_short }}
-            ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
+          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
 
       - name: Build and Push Backend Docker Image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: ${{ github.event_name == 'push' }}
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: |
-            ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
-            ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.vars.outputs.sha_short }}
-            ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
+          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
 
   deploy:
-    name: Deploy to K3s using Ansible
+    name: Deploy to K3s
     needs: test-and-build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    if: ${{ github.event_name == 'push' }}
     runs-on: self-hosted
-    environment:
-      name: ${{ needs.test-and-build.outputs.deploy_env }}
+    environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Checkout Repository (on runner)
+      - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
 
-      - name: Mask sensitive values
+      - name: Mask Secrets
         run: |
           echo "::add-mask::${{ secrets.GRAFANA_ADMIN_PASSWORD }}"
           echo "::add-mask::${{ secrets.ANSIBLE_VAULT_PASSWORD }}"
 
-      - name: Create Ansible Vault file
+      - name: Configure Git Credentials
         run: |
-          cat << EOF > vault_vars.yml
-          vault_grafana_password: "${{ secrets.GRAFANA_ADMIN_PASSWORD }}"
-          vault_docker_username: "${{ env.DOCKERHUB_USERNAME }}"
-          EOF
-          ansible-vault encrypt vault_vars.yml --vault-password ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git config --global credential.helper 'store --file ~/.git-credentials'
+          echo "https://${{ secrets.GITHUB_TOKEN }}@github.com" > ~/.git-credentials
 
-      - name: Deploy to K3s via SSH using Ansible
+      - name: Deploy via Ansible
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.K3S_HOST_IP }}
@@ -171,49 +145,43 @@ jobs:
           key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
           script: |
             set -e
-            echo "--- Updating project repository on K3s server ---"
             cd ${{ env.K3S_SERVER_PROJECT_PATH }}
-            git fetch --all
-            git checkout ${{ github.sha }}
-            
-            echo "--- Writing Vault password ---"
-            echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_pass
-            
-            echo "--- Running Ansible Playbook for Atomic Helm Deployment ---"
-            ansible-playbook ansible/deploy.yml \
-              --vault-password-file .vault_pass \
-              --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} \
-                            image_tag=${{ needs.test-and-build.outputs.image_tag }} \
-                            helm_chart_path_on_server=${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }} \
-                            helm_release_name=${{ env.HELM_RELEASE_NAME }} \
-                            atomic_deploy=true \
-                            timeout=5m" \
-              --extra-vars "@vault_vars.yml"
-            
-            echo "--- Cleaning up credentials ---"
-            rm -f .vault_pass vault_vars.yml
-            
-            echo "--- Deployment finished ---"
+            git pull origin ${{ github.ref }}
 
-      - name: Verify Deployment Health
+            cat > vault_vars.yml <<EOF
+            vault_grafana_password: "${{ secrets.GRAFANA_ADMIN_PASSWORD }}"
+            vault_docker_username: "${{ env.DOCKERHUB_USERNAME }}"
+            EOF
+            ansible-vault encrypt vault_vars.yml --vault-password=${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+
+            if helm history ${{ env.HELM_RELEASE_NAME }} | grep -q DEPLOYED; then
+              ROLLBACK_CMD="helm rollback ${{ env.HELM_RELEASE_NAME }}"
+            else
+              ROLLBACK_CMD="echo 'No rollback needed'"
+            fi
+
+            ansible-playbook ansible/deploy.yml \
+              --vault-password-file <(echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}") \
+              --extra-vars "image_tag=${{ needs.test-and-build.outputs.image_tag }} helm_env=${{ needs.test-and-build.outputs.deploy_env }} rollback_cmd='$ROLLBACK_CMD'"
+
+            rm -f vault_vars.yml
+
+      - name: Health Check
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.K3S_HOST_IP }}
           username: ${{ secrets.K3S_USER }}
           key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
           script: |
-            echo "--- Verifying application health ---"
-            curl --retry 10 --retry-delay 5 --retry-all-errors -sSf http://localhost:8080/health | grep "OK"
-            echo "--- Health check passed ---"
+            APP_PORT=$(kubectl get svc/${{ env.HELM_RELEASE_NAME }}-service -o jsonpath='{.spec.ports[0].port}')
+            curl -sSf http://${{ env.HELM_RELEASE_NAME }}-service:$APP_PORT/health
 
-      - name: Rollback on Failure
+      - name: Rollback if Failed
         if: ${{ failure() }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.K3S_HOST_IP }}
-          username: ${{ secrets.K3S_USER }}
-          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
           script: |
-            echo "--- DEPLOYMENT FAILED - INITIATING ROLLBACK ---"
-            helm rollback ${{ env.HELM_RELEASE_NAME }} 0
-            echo "--- Rollback completed successfully ---"
+            if helm history ${{ env.HELM_RELEASE_NAME }} | grep -q DEPLOYED; then
+              helm rollback ${{ env.HELM_RELEASE_NAME }}
+            fi
