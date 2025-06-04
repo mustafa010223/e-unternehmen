@@ -185,3 +185,4 @@ jobs:
             if helm history ${{ env.HELM_RELEASE_NAME }} | grep -q DEPLOYED; then
               helm rollback ${{ env.HELM_RELEASE_NAME }}
             fi
+
