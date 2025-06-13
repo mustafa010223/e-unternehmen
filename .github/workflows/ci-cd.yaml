@@ -36,7 +36,7 @@ jobs:
         with:
           fetch-depth: 0 # HATA DÜZELTMESİ: TruffleHog'un tüm geçmişi tarayabilmesi için eklendi.
 
-      - name: Set up Node.js
+      - name: Set up Node.js with Cache v2
         uses: actions/setup-node@v4
         with:
           node-version: '18'
