@@ -99,9 +99,6 @@ build/ # Genel 'build' klasörlerini yok sayar. Eğer frontend/build commit edil
 # Gatsby files
 # .cache/ # Zaten yukarıda .cache var
 # public # Bu satır, frontend/public/index.html'in yok sayılmasına neden oluyordu, bu yüzden yorumlandı veya silindi.
-         # Eğer projenizde başka bir 'public' klasörünü bilerek yok saymak istemiyorsanız,
-         # bu satırı tamamen kaldırın veya daha spesifik hale getirin.
-         # Örneğin: gatsby-public/
 
 # VuePress build output
 .vuepress/dist
@@ -127,10 +124,12 @@ build/ # Genel 'build' klasörlerini yok sayar. Eğer frontend/build commit edil
 # Swap files from editors like Vim/Nano
 *.swp
 *~
-actions-runner/
 
-echo "actions-runner/_work/" >> .gitignore
-# AŞAĞIDAKİLERİ .gitignore'A EKLEYİN
+# GitHub Actions Runner
+actions-runner/
+actions-runner/_work/
+
+# Ansible ve Hassas Veriler
 secrets.yml
 *.vault
 .vault_pass
