@@ -34,7 +34,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # TruffleHog'un tüm geçmişi tarayabilmesi için eklendi.
+          fetch-depth: 0
 
       - name: Set up Node.js with Cache v2
         uses: actions/setup-node@v4
@@ -57,10 +57,6 @@ jobs:
           else
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
-      
-      # YENİ HATA AYIKLAMA ADIMI
-      - name: DEBUG - Show Frontend package.json
-        run: cat ./frontend/package.json
 
       - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
@@ -88,6 +84,13 @@ jobs:
         env:
           MONGO_URL: mongodb://localhost:27017/myapp_test
 
+      # YENİ HATA AYIKLAMA ADIMLARI
+      - name: DEBUG - List All Files in Project
+        run: ls -laR
+
+      - name: DEBUG - Show .trufflehog-ignore content
+        run: cat .trufflehog-ignore || echo ".trufflehog-ignore not found"
+      
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
