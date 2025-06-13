@@ -84,13 +84,12 @@ jobs:
         env:
           MONGO_URL: mongodb://localhost:27017/myapp_test
       
-      # Artık debug adımlarına ihtiyacımız kalmadı, kaldırılabilir veya bırakılabilir.
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}
-          extra_args: --no-verify # <-- SORUNU ÇÖZECEK OLAN PARAMETRE
+          base: HEAD~1 # Sadece bir önceki commit ile karşılaştır
+          head: HEAD    # Şu anki commit'e kadar tara
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
