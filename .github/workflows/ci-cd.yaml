@@ -83,19 +83,14 @@ jobs:
         run: npm test --if-present -- --watchAll=false --coverage
         env:
           MONGO_URL: mongodb://localhost:27017/myapp_test
-
-      # YENİ HATA AYIKLAMA ADIMLARI
-      - name: DEBUG - List All Files in Project
-        run: ls -laR
-
-      - name: DEBUG - Show .trufflehog-ignore content
-        run: cat .trufflehog-ignore || echo ".trufflehog-ignore not found"
       
+      # Artık debug adımlarına ihtiyacımız kalmadı, kaldırılabilir veya bırakılabilir.
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}
+          extra_args: --no-verify # <-- SORUNU ÇÖZECEK OLAN PARAMETRE
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
