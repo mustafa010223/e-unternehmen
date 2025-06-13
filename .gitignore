@@ -135,3 +135,4 @@ secrets.yml
 .vault_pass
 *.j2
 myenv/myenv/
+myenv/
