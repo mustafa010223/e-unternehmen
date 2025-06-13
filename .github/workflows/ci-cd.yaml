@@ -34,7 +34,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # HATA DÜZELTMESİ: TruffleHog'un tüm geçmişi tarayabilmesi için eklendi.
+          fetch-depth: 0 # TruffleHog'un tüm geçmişi tarayabilmesi için eklendi.
 
       - name: Set up Node.js with Cache v2
         uses: actions/setup-node@v4
@@ -57,6 +57,10 @@ jobs:
           else
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
+      
+      # YENİ HATA AYIKLAMA ADIMI
+      - name: DEBUG - Show Frontend package.json
+        run: cat ./frontend/package.json
 
       - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
