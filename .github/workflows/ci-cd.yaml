@@ -88,8 +88,8 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: HEAD~1 # Sadece bir önceki commit ile karşılaştır-
-          head: HEAD    # Şu anki commit'e kadar tara
+          base: HEAD~1
+          head: HEAD
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
