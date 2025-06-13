@@ -6,9 +6,9 @@ version: 0.1.0 # Chart versiyonunuz
 appVersion: "1.0.0" # Uygulama versiyonunuz
 
 # Projenizin detayları (isteğe bağlı ama önerilir)
-home: https://github.com/meyfcsalik/your-project-repo # Projenizin GitHub URL'si
+home: https://github.com/meyfcsalik/https://github.com/mustafa010223/e-unternehmen.git # Projenizin GitHub URL'si
 sources:
-  - https://github.com/meyfcsalik/your-project-repo
+  - https://github.com/meyfcsalik/https://github.com/mustafa010223/e-unternehmen.git
 maintainers:
   - name: Mustafa Salik # Adınız
     email: your.email@example.com # E-postanız
