@@ -1,5 +1,1 @@
-# .trufflehogignore
-# Yerel geliştirme MongoDB URI'sini yoksay
 mongodb://localhost:27017
-
-
