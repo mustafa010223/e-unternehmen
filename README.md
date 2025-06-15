@@ -18,3 +18,4 @@ vault_ssl_cert: |
 ## username: "dev_user"
 ##  password: "T3mP!Pass"
 ## deneme icin yazdim workflow calisacak mi
+Frontend Dockerfile ve submodule duzeltmeleri tekrar denendi.
