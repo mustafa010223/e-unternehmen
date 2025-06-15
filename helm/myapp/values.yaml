@@ -11,16 +11,19 @@ serviceAccount:
   annotations: {}
   name: "" # Eğer isim belirtilmezse Helm varsayılan bir isim oluşturur
 
-podSecurityContext: {} # Pod düzeyinde güvenlik bağlamı (genellikle hassas ayarlar)
-  # fsGroup: 2000 # Örnek: Pod'daki tüm container'lar için geçerli olacak dosya sistemi grubu ID'si
-
-securityContext: {} # Container düzeyinde güvenlik bağlamı (genellikle hassas ayarlar)
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
+podSecurityContext: # Pod düzeyinde güvenlik bağlamı
+  runAsNonRoot: true # Pod içindeki tüm container'ları kök olmayan bir kullanıcı olarak çalıştır
+  # fsGroup: 1000 # Eğer dosya sistemi izinleri gerekiyorsa bu satırı etkinleştirin
+                  # Uygulamanızın ve imajınızın beklediği GID'ye göre ayarlayın
+securityContext: # Container düzeyinde güvenlik bağlamı
+  allowPrivilegeEscalation: false # Kapsayıcının ayrıcalık yükseltmesine izin verme
+  readOnlyRootFilesystem: true # Kapsayıcının kök dosya sistemini salt okunur yap
+  capabilities:
+    drop:
+      - ALL # Tüm Linux özelliklerini bırak (güvenlik için iyi)
+  runAsNonRoot: true # Kapsayıcıyı kök olmayan bir kullanıcı olarak çalıştır
+  runAsUser: 999 # Burası DÜZELTİLDİ: MongoDB için genellikle 999 UID'si kullanılır.
+                  # Lütfen kullandığınız imajın varsayılan kullanıcısının UID'sini KONTROL EDİN.
 
 ---
 
@@ -36,8 +39,6 @@ frontend:
     type: NodePort # Dışarıdan erişim için NodePort kullanılıyor
     port: 80 # Service portu
     targetPort: 80 # Container'ın dinlediği port (sayısal)
-    # Eğer uygulamanız HTTP portunu farklı bir isimle expose ediyorsa (örneğin 'http'),
-    # 'targetPort: http' yapabilirsiniz, ancak 80 gibi sayısal değerler daha net ve sorunsuz olabilir.
     nodePort: 30081 # NodePort için kullanılacak port (30000-32767 aralığında olmalı)
   resources: {} # Kaynak limitleri ve istekleri (CPU/Bellek)
     # limits:
@@ -66,7 +67,7 @@ frontend:
     prometheus.io/scrape: "true" # Prometheus'un bu pod'u taramasını sağlar
     prometheus.io/port: "80" # Frontend uygulamasının metrik sunduğu port (genellikle HTTP portu ile aynı olabilir, eğer /metrics oradan sunuluyorsa)
     prometheus.io/path: "/metrics" # Frontend uygulamasının metrik sunduğu yol.
-                                  # Eğer frontend uygulamanızda Prometheus metrikleri yoksa, bu anotasyonları kaldırın veya ServiceMonitor'ı devre dışı bırakın.
+                                    # Eğer frontend uygulamanızda Prometheus metrikleri yoksa, bu anotasyonları kaldırın veya ServiceMonitor'ı devre dışı bırakın.
 
 ---
 
@@ -87,15 +88,15 @@ backend:
     # Helm'de "fullname" helper'ı kullanılırsa, servis adı otomatik oluşturulur.
     # Servis adı genellikle <release-name>-<component-name> şeklinde olur.
     # Bu durumda "myapp-mongodb:27017" doğru olacaktır.
-    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-{{ .Values.mongodb.name }}:27017/myapp_default"
+    MONGO_URL: "mongodb://{{ include "myapp.fullname" . }}-{{ .Values.mongodb.name }}:27017/myapp_default"
     NODE_ENV: "development" # Geliştirme ortamı modu
   resources: {}
     # limits:
-    #   cpu: 200m
-    #   memory: 256Mi
+    #   memory: "256Mi"
+    #   cpu: "200m"
     # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
+    #   memory: "128Mi"
+    #   cpu: "100m"
   livenessProbe:
     httpGet:
       path: /api/health # Backend uygulamanızın sağlık kontrolü endpoint'i
@@ -116,7 +117,7 @@ backend:
     prometheus.io/scrape: "true" # Prometheus'un bu pod'u taramasını sağlar
     prometheus.io/port: "5000" # Backend uygulamasının metrik sunduğu port
     prometheus.io/path: "/metrics" # Backend uygulamasının metrik sunduğu yol.
-                                  # Backend uygulamanızın bu yolda metrikleri sunduğundan emin olun.
+                                    # Backend uygulamanızın bu yolda metrikleri sunduğundan emin olun.
 
 ---
 
@@ -131,17 +132,17 @@ mongodb:
   service:
     # StatefulSet kullanılıyorsa, headless service için serviceName alanı ile eşleşmeli.
     # Normal bir ClusterIP servisi için sadece 'name' yeterlidir.
-    name: "{{ include \"myapp.fullname\" . }}-{{ .Values.mongodb.name }}" # Helm fullname helper kullanıldı
+    name: "{{ include "myapp.fullname" . }}-{{ .Values.mongodb.name }}" # Helm fullname helper kullanıldı
     type: ClusterIP # Genellikle küme içi erişim için ClusterIP
     # clusterIP: None # Eğer bu bir Headless Service ise (StatefulSet serviceName için) bu satırı etkinleştirin.
-                      # Tek replikalı MongoDB için genellikle bu gerekli değildir.
+                     # Tek replikalı MongoDB için genellikle bu gerekli değildir.
     port: 27017 # MongoDB'nin varsayılan portu
   auth:
     enabled: true # MongoDB kimlik doğrulamasını etkinleştirin (Güvenlik için çok önemli!)
     # existingSecret: "" # Eğer önceden var olan bir secret kullanmak isterseniz adını buraya yazın
     # Yeni Secret oluşturulacaksa kullanılacak değerler (templates/secret-mongodb.yaml bunları kullanır)
     # rootPassword: "" # CI/CD secrets'tan gelmesi en iyisidir. `ansible-playbook` ile --set veya values.yaml'a gömülü olarak verilebilir.
-    #                  # Eğer boş bırakılırsa ve templates/secret-mongodb.yaml rastgele oluşturuyorsa o şekilde kalabilir.
+    #                   # Eğer boş bırakılırsa ve templates/secret-mongodb.yaml rastgele oluşturuyorsa o şekilde kalabilir.
     usernameKey: "mongodb-root-username" # Secret içindeki kullanıcı adı key'i
     passwordKey: "mongodb-root-password" # Secret içindeki parola key'i
   
@@ -187,7 +188,20 @@ mongodb:
 
 # Ingress Ayarları
 ingress:
-  enabled: false # Eğer dışarıdan erişim için Ingress kullanılıyorsa 'true' yapılmalı
+  enabled: true # Burası DÜZELTİLDİ: Ingress'i etkinleştirir
+  className: nginx # Kullandığınız Ingress Controller'ın sınıf adını buraya yazın (örn: nginx, traefik)
+  annotations: {} # Özel Ingress Controller anotasyonları buraya eklenebilir
+    # kubernetes.io/ingress.class: nginx
+    # nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: app.mustafasalik.de # Buraya kendi domain adınızı yazın
+      paths:
+        - path: /
+          pathType: Prefix # veya Exact
+  tls: [] # TLS/SSL sertifikaları için. Eğer HTTPS kullanacaksanız burayı doldurun.
+    # - secretName: myapp-tls-secret # Sertifikanızın bulunduğu Kubernetes Secret adı
+    #   hosts:
+    #     - app.mustafasalik.de
 
 ---
 

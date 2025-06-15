@@ -6,16 +6,16 @@ version: 0.1.0 # Chart versiyonunuz
 appVersion: "1.0.0" # Uygulama versiyonunuz
 
 # Projenizin detayları (isteğe bağlı ama önerilir)
-home: https://github.com/meyfcsalik/https://github.com/mustafa010223/e-unternehmen.git # Projenizin GitHub URL'si
+home: https://github.com/mustafa010223/e-unternehmen.git # Burası düzeltildi
 sources:
-  - https://github.com/meyfcsalik/https://github.com/mustafa010223/e-unternehmen.git
+  - https://github.com/mustafa010223/e-unternehmen.git # Burası düzeltildi
 maintainers:
   - name: Mustafa Salik # Adınız
-    email: your.email@example.com # E-postanız
+    email: mustafaasalik@gmail.com # E-postanız
 
 dependencies:
   - name: kube-prometheus-stack
     version: "57.0.2" # Güncel ve stabil bir sürüm kullanın
     repository: "https://prometheus-community.github.io/helm-charts"
     # Sadece `monitoring.enabled=true` ise kurulmasını sağlar
-    condition: monitoring.enabled
+    condition: monitoring.enable

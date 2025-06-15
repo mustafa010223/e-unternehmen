@@ -9,7 +9,7 @@ spec:
   type: {{ .Values.frontend.service.type }}
   ports:
     - port: {{ .Values.frontend.service.port }}
-      targetPort: {{ .Values.frontend.service.targetPort | default "http" }} # containerPort adına veya sayısına referans
+      targetPort: 80 # Burası düzeltildi: "http" yerine sayısal 80
       protocol: TCP
       name: http
       {{- if and (eq .Values.frontend.service.type "NodePort") .Values.frontend.service.nodePort }}

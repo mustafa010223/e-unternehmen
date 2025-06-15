@@ -7,8 +7,8 @@ metadata:
     app.kubernetes.io/component: {{ .Values.mongodb.name }}
 spec:
   # serviceName, pod'lara kararlı ağ kimlikleri (DNS) sağlamak için gereklidir.
-  # Bu, MongoDB Headless Servisinizin adına işaret etmelidir.
-  serviceName: {{ .Values.mongodb.headlessServiceName | default (printf "%s-%s-headless" (include "myapp.fullname" .) .Values.mongodb.name) }}
+  # Bu, MongoDB Service'inizin adına işaret etmelidir.
+  serviceName: {{ .Values.mongodb.service.name | default (printf "%s-mongodb" (include "myapp.fullname" .)) }} # Burası düzeltildi
   replicas: {{ .Values.mongodb.replicaCount }}
   selector:
     matchLabels:

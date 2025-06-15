@@ -3,16 +3,11 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: {{ include "myapp.fullname" . }}-app-alerts
-  namespace: {{ .Values.monitoring.kube_prometheus_stack.namespace | default "monitoring" }} # İzleme namespace'i
+  namespace: {{ .Values.monitoring.kube_prometheus_stack.namespace | default "monitoring" }}
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
-    # Bu etiket, kube-prometheus-stack içindeki Prometheus'un bu kuralı bulmasını sağlar
-    # Genellikle release adı veya özel bir etiket kullanılır.
-    # kube-prometheus-stack'in Prometheus CR'ındaki ruleSelector ile eşleşmeli.
-    # Örnek: prometheus: kube-prometheus (kube-prometheus-stack chart'ının varsayılanlarından biri)
-    # Veya:
-    release: {{ .Release.Name }} # Eğer Prometheus ruleSelector'ı release label'ına göre seçiyorsa
-    app.kubernetes.io/part-of: kube-prometheus-stack # Bu da yaygın bir pattern
+    release: {{ .Release.Name }}
+    app.kubernetes.io/part-of: kube-prometheus-stack
 spec:
   groups:
     - name: {{ include "myapp.name" . }}.rules
@@ -24,9 +19,11 @@ spec:
             severity: warning
             namespace: "{{ .Release.Namespace }}"
           annotations:
-            summary: "High Pod Restart Count for {{ $labels.pod }}"
-            description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted more than 2 times in the last 15 minutes."
-            runbook_url: "https://your-runbook-url/pod-restarts" # Varsa çözüm kılavuzu
+            # Prometheus değişkenleri Helm tarafından literal olarak geçirilmelidir.
+            # {{ }} içindeki stringler Helm tarafından yorumlanmaz, doğrudan Prometheus'a iletilir.
+            summary: "High Pod Restart Count for {{ "{{" }} $labels.pod {{ "}}" }}" # Düzeltildi
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} in namespace {{ "{{" }} $labels.namespace {{ "}}" }} has restarted more than 2 times in the last 15 minutes." # Düzeltildi
+            runbook_url: "https://your-runbook-url/pod-restarts"
 
         - alert: HighCPUUsage{{ include "myapp.name" | title | replace "-" "" }}
           expr: >
@@ -39,9 +36,9 @@ spec:
             severity: warning
             namespace: "{{ .Release.Namespace }}"
           annotations:
-            summary: "High CPU Usage for {{ $labels.container }} in {{ $labels.pod }}"
-            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is using over 80% of its CPU limit."
-            value: "{{ $value | printf \"%.2f\" }}%"
+            summary: "High CPU Usage for {{ "{{" }} $labels.container {{ "}}" }} in {{ "{{" }} $labels.pod {{ "}}" }}" # Düzeltildi
+            description: "Container {{ "{{" }} $labels.container {{ "}}" }} in pod {{ "{{" }} $labels.pod {{ "}}" }} (namespace {{ "{{" }} $labels.namespace {{ "}}" }}) is using over 80%% of its CPU limit." # Düzeltildi
+            value: "{{ "{{" }} $value | printf \"%.2f\" {{ "}}" }}%" # Düzeltildi
 
         - alert: HighMemoryUsage{{ include "myapp.name" | title | replace "-" "" }}
           expr: >
@@ -54,7 +51,7 @@ spec:
             severity: critical
             namespace: "{{ .Release.Namespace }}"
           annotations:
-            summary: "High Memory Usage for {{ $labels.container }} in {{ $labels.pod }}"
-            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is using over 85% of its memory limit."
-            value: "{{ $value | printf \"%.2f\" }}%"
+            summary: "High Memory Usage for {{ "{{" }} $labels.container {{ "}}" }} in {{ "{{" }} $labels.pod {{ "}}" }}" # Düzeltildi
+            description: "Container {{ "{{" }} $labels.container {{ "}}" }} in pod {{ "{{" }} $labels.pod {{ "}}" }} (namespace {{ "{{" }} $labels.namespace {{ "}}" }}) is using over 85%% of its memory limit." # Düzeltildi
+            value: "{{ "{{" }} $value | printf \"%.2f\" {{ "}}" }}%" # Düzeltildi
 {{- end }}
