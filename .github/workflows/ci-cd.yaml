@@ -1,134 +1,174 @@
-name: CI/CD Pipeline for Microservices
+    name: CI/CD Pipeline for Microservices
 
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-  workflow_dispatch:
+    on:
+      push:
+        branches: [main, develop]
+      pull_request:
+        branches: [main, develop]
+      workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
 
-env:
-  DOCKERHUB_USERNAME: meyfcsalik
-  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen
-  HELM_CHART_PATH: helm/myapp
-  HELM_RELEASE_NAME: myapp
+    env:
+      DOCKERHUB_USERNAME: meyfcsalik
+      K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen
+      HELM_CHART_PATH: helm/myapp
+      HELM_RELEASE_NAME: myapp
 
-jobs:
-  test-and-build:
-    name: Test, Build and Push Docker Images
-    runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_full }}
-      deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-    services:
-      mongodb_test:
-        image: mongo:6.0
-        ports: [27017:27017]
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    jobs:
+      test-and-build:
+        name: Test, Build and Push Docker Images
+        runs-on: ubuntu-latest
+        outputs:
+          image_tag: ${{ steps.vars.outputs.sha_full }}
+          deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
+          image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+        services:
+          mongodb_test:
+            image: mongo:6.0
+            ports: [27017:27017]
+        steps:
+          - name: Checkout Repository
+            uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
 
-      - name: Set up Node.js with Cache v2
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            backend/package-lock.json
+          - name: Set up Node.js with Cache v2
+            uses: actions/setup-node@v4
+            with:
+              node-version: '18'
+              cache: 'npm'
+              cache-dependency-path: |
+                frontend/package-lock.json
+                backend/package-lock.json
 
-      - name: Set Output Variables (Commit SHA)
-        id: vars
-        run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          - name: Set Output Variables (Commit SHA)
+            id: vars
+            run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Determine Environment Name
-        id: set_env
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
-          else
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-          fi
+          - name: Determine Environment Name
+            id: set_env
+            run: |
+              if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+                echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
+              else
+                echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
+              fi
 
-      - name: Frontend - Install Dependencies & Lint
-        working-directory: ./frontend
-        run: |
-          npm ci
-          npm run lint --if-present
+          - name: Frontend - Install Dependencies & Lint
+            working-directory: ./frontend
+            run: |
+              npm ci
+              npm run lint --if-present
 
-      - name: Frontend - Run Tests
-        working-directory: ./frontend
-        run: npm test --if-present -- --watchAll=false --coverage
+          - name: Frontend - Run Tests
+            working-directory: ./frontend
+            run: npm test --if-present -- --watchAll=false --coverage
 
-      - name: Frontend - Build
-        working-directory: ./frontend
-        run: npm run build
+          - name: Frontend - Build
+            working-directory: ./frontend
+            run: npm run build
 
-      - name: Backend - Install Dependencies & Lint
-        working-directory: ./backend
-        run: |
-          npm ci
-          npm run lint --if-present
+          - name: Backend - Install Dependencies & Lint
+            working-directory: ./backend
+            run: |
+              npm ci
+              npm run lint --if-present
 
-      - name: Backend - Run Tests
-        working-directory: ./backend
-        run: npm test --if-present -- --watchAll=false --coverage
-        env:
-          MONGO_URL: mongodb://localhost:27017/myapp_test
-      
-      - name: Scan for secrets with TruffleHog
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          base: HEAD~1
-          head: HEAD
+          - name: Backend - Run Tests
+            working-directory: ./backend
+            run: npm test --if-present -- --watchAll=false --coverage
+            env:
+              MONGO_URL: mongodb://localhost:27017/myapp_test
 
-      - name: Log in to Docker Hub
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          - name: Scan for secrets with TruffleHog
+            uses: trufflesecurity/trufflehog@main
+            with:
+              path: ./
+              base: HEAD~1
+              head: HEAD
 
-      - name: Build and Push Frontend Docker Image
-        if: github.event_name == 'push'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          - name: Log in to Docker Hub
+            if: github.event_name == 'push'
+            uses: docker/login-action@v3
+            with:
+              username: ${{ env.DOCKERHUB_USERNAME }}
+              password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push Backend Docker Image
-        if: github.event_name == 'push'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          - name: Build and Push Frontend Docker Image
+            if: github.event_name == 'push'
+            uses: docker/build-push-action@v5
+            with:
+              context: ./frontend
+              file: ./frontend/Dockerfile
+              push: true
+              tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+              no-cache: true # Docker build önbelleğini devre dışı bırak
 
-  deploy:
-    name: Deploy to K3s
-    needs: test-and-build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted
-    environment: ${{ needs.test-and-build.outputs.deploy_env }}
-    steps:
-      - name: Deploy via Ansible
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.K3S_HOST_IP }}
-          username: ${{ secrets.K3S_USER }}
-          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
-          script: |
-            # Deploy scriptiniz buraya gelecek
-            echo "Deploying image tag ${{ needs.test-and-build.outputs.image_tag }} to ${{ needs.test-and-build.outputs.deploy_env }}"
+          - name: Build and Push Backend Docker Image
+            if: github.event_name == 'push'
+            uses: docker/build-push-action@v5
+            with:
+              context: ./backend
+              file: ./backend/Dockerfile
+              push: true
+              tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+              no-cache: true # Docker build önbelleğini devre dışı bırak
+
+      deploy:
+        name: Deploy to K3s
+        needs: test-and-build
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        runs-on: self-hosted
+        environment: ${{ needs.test-and-build.outputs.deploy_env }}
+        steps:
+          - name: Deploy via SSH and Helm # SSH üzerinden K3s sunucusuna bağlan ve Helm ile dağıtım yap
+            uses: appleboy/ssh-action@v1.0.3
+            with:
+              host: ${{ secrets.K3S_HOST_IP }}
+              username: ${{ secrets.K3S_USER }}
+              key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
+              script: |
+                # --- SSH bağlantısı kurulduktan sonra K3s sunucusunda çalışacak komutlar ---
+
+                # GitHub Actions çıktılarından Docker imaj etiketlerini al
+                FRONTEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
+                BACKEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
+                DEPLOY_ENV_NAME="${{ needs.test-and-build.outputs.deploy_env }}" # Ortam adını al (staging/production)
+                DEPLOY_NAMESPACE="default" # Uygulamanızın dağıtılacağı Kubernetes namespace'i (isteğe göre değiştirin)
+
+                echo "Deploying Frontend: $FRONTEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
+                echo "Deploying Backend: $BACKEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
+                echo "Deploying environment: $DEPLOY_ENV_NAME"
+
+                # Helm upgrade --install komutunu kullanarak dağıtım yapın.
+                # --install: Eğer release yoksa kurar.
+                # --namespace: Hangi namespace'e dağıtılacağını belirtir.
+                # --values: Ortama özel values dosyasını kullanır.
+                # --set: values.yaml dosyasındaki değerleri override etmek için kullanılır.
+                # Docker imaj etiketlerini dinamik olarak güncel değerlerle iletiyoruz.
+                
+                # Ortama özel values dosyasını seçme
+                HELM_VALUES_FILE="${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }}/values-${DEPLOY_ENV_NAME}.yaml"
+
+                helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} \
+                  --namespace "$DEPLOY_NAMESPACE" \
+                  -f "$HELM_VALUES_FILE" \ # Ortama özel values dosyasını kullan
+                  --set frontend.image.repository="${{ env.DOCKERHUB_USERNAME }}/frontend" \
+                  --set frontend.image.tag="${FRONTEND_IMAGE_FULL_TAG##*:}" \
+                  --set backend.image.repository="${{ env.DOCKERHUB_USERNAME }}/backend" \
+                  --set backend.image.tag="${BACKEND_IMAGE_FULL_TAG##*:}" \
+                  --wait # Dağıtım tamamlanana kadar bekler
+
+                echo "Helm deployment initiated. Checking rollout status..."
+
+                # Dağıtımın tamamlanmasını ve podların hazır olmasını bekle
+                # Helm chart'ınızdaki deployment adlarınız genellikle release adı + komponent adı şeklindedir (myapp-frontend, myapp-backend)
+                kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-frontend -n "$DEPLOY_NAMESPACE"
+                kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-backend -n "$DEPLOY_NAMESPACE"
+
+                echo "Deployment rollout checks complete."
+                echo "Application should now be updated."
