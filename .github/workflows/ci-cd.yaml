@@ -1,175 +1,174 @@
-    name: CI/CD Pipeline for Microservices
+name: CI/CD Pipeline for Microservices # İş akışının adı
 
-    on:
-      push:
-        branches: [main, develop]
-      pull_request:
-        branches: [main, develop]
-      workflow_dispatch:
+on: # Bu iş akışının ne zaman çalışacağını belirler
+  push: # Kod bir dala itildiğinde (push edildiğinde) çalışır
+    branches: [main, develop] # Sadece 'main' veya 'develop' dallarına yapılan push'larda tetiklenir
+  pull_request: # Bir çekme isteği (pull request) açıldığında veya güncellendiğinde çalışır
+    branches: [main, develop] # Sadece 'main' veya 'develop' dallarını hedefleyen PR'lar için
+  workflow_dispatch: # GitHub Actions arayüzünden manuel olarak tetikleme sağlar
 
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
+concurrency: # Eşzamanlı çalıştırmaları yönetir
+  group: ${{ github.workflow }}-${{ github.ref }} # Aynı iş akışı ve dal için sadece bir çalıştırmaya izin verir
+  cancel-in-progress: true # Aynı grup için zaten çalışan bir iş varsa, yeni iş başladığında onu iptal eder
 
-    env:
-      DOCKERHUB_USERNAME: meyfcsalik
-      K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen
-      HELM_CHART_PATH: helm/myapp
-      HELM_RELEASE_NAME: myapp
+env: # İş akışı genelinde kullanılacak ortam değişkenleri
+  DOCKERHUB_USERNAME: meyfcsalik # Docker Hub kullanıcı adınız
+  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # K3s sunucusunda projenin depolandığı yol
+  HELM_CHART_PATH: helm/myapp # Helm chart'ınızın proje köküne göre yolu
+  HELM_RELEASE_NAME: myapp # Helm release adı
 
-    jobs:
-      test-and-build:
-        name: Test, Build and Push Docker Images
-        runs-on: ubuntu-latest
-        outputs:
-          image_tag: ${{ steps.vars.outputs.sha_full }}
-          deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-          image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-          image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-        services:
-          mongodb_test:
-            image: mongo:6.0
-            ports: [27017:27017]
-        steps:
-          - name: Checkout Repository
-            uses: actions/checkout@v4
-            with:
-              fetch-depth: 0
+jobs: # İş akışındaki görevler veya adımlar
+  test-and-build: # İlk iş: Testleri çalıştırır, build yapar ve Docker imajlarını push eder
+    name: Test, Build and Push Docker Images
+    runs-on: ubuntu-latest # Bu işin çalışacağı GitHub tarafından barındırılan (hosted) sanal makine (Ubuntu Linux)
+    outputs: # Bu işten sonraki işlere (deploy gibi) aktarılacak çıktılar
+      image_tag: ${{ steps.vars.outputs.sha_full }} # Tam commit SHA'sını içerir (imaj etiketi olarak kullanılacak)
+      deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }} # Dağıtım ortamı adı (staging veya production)
+      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }} # Frontend imajının tam yolu ve etiketi
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }} # Backend imajının tam yolu ve etiketi
+    services: # Bu iş çalışırken kullanılacak servisler (örneğin testler için veritabanı)
+      mongodb_test: # MongoDB servisi tanımlaması
+        image: mongo:6.0 # Kullanılacak MongoDB imajı
+        ports: [27017:27017] # Port eşlemesi (host:container)
+    steps: # Bu işin içinde çalıştırılacak adımlar
+      - name: Checkout Repository # Depoyu sanal makineye kopyalar
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # TruffleHog gibi araçlar için tüm Git geçmişini çeker
 
-          - name: Set up Node.js with Cache v2
-            uses: actions/setup-node@v4
-            with:
-              node-version: '18'
-              cache: 'npm'
-              cache-dependency-path: |
-                frontend/package-lock.json
-                backend/package-lock.json
+      - name: Set up Node.js with Cache v2 # Node.js ortamını kurar ve npm önbelleğini yapılandırır
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Node.js sürümü
+          cache: 'npm' # npm bağımlılıklarını önbelleğe alır
+          cache-dependency-path: | # Önbelleğe alınacak bağımlılık dosyalarının yolları
+            frontend/package-lock.json
+            backend/package-lock.json
 
-          - name: Set Output Variables (Commit SHA)
-            id: vars
-            run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+      - name: Set Output Variables (Commit SHA) # Çıktı değişkenlerini ayarlar (örneğin commit SHA'sı)
+        id: vars
+        run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT # Commit SHA'sını alır
 
-          - name: Determine Environment Name
-            id: set_env
-            run: |
-              if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-                echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
-              else
-                echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-              fi
+      - name: Determine Environment Name # Dağıtım ortamını belirler (main için production, diğerleri için staging)
+        id: set_env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
+          fi
 
-          - name: Frontend - Install Dependencies & Lint
-            working-directory: ./frontend
-            run: |
-              npm ci
-              npm run lint --if-present
+      - name: Frontend - Install Dependencies & Lint # Frontend bağımlılıklarını kurar ve kod kalitesini kontrol eder
+        working-directory: ./frontend # Bu adımdaki komutların çalışacağı dizin
+        run: |
+          npm ci # package-lock.json'a göre temiz kurulum
+          npm run lint --if-present # Lint script'i varsa çalıştır
 
-          - name: Frontend - Run Tests
-            working-directory: ./frontend
-            run: npm test --if-present -- --watchAll=false --coverage
+      - name: Frontend - Run Tests # Frontend testlerini çalıştırır
+        working-directory: ./frontend
+        run: npm test --if-present -- --watchAll=false --coverage # Testleri ve kapsama raporunu çalıştırır
 
-          - name: Frontend - Build
-            working-directory: ./frontend
-            run: npm run build
+      - name: Frontend - Build # Frontend uygulamasını derler (üretim için statik dosyaları oluşturur)
+        working-directory: ./frontend
+        run: npm run build
 
-          - name: Backend - Install Dependencies & Lint
-            working-directory: ./backend
-            run: |
-              npm ci
-              npm run lint --if-present
+      - name: Backend - Install Dependencies & Lint # Backend bağımlılıklarını kurar ve kod kalitesini kontrol eder
+        working-directory: ./backend
+        run: |
+          npm ci
+          npm run lint --if-present
 
-          - name: Backend - Run Tests
-            working-directory: ./backend
-            run: npm test --if-present -- --watchAll=false --coverage
-            env:
-              MONGO_URL: mongodb://localhost:27017/myapp_test
+      - name: Backend - Run Tests # Backend testlerini çalıştırır
+        working-directory: ./backend
+        run: npm test --if-present -- --watchAll=false --coverage
+        env: # Testler için ortam değişkeni
+          MONGO_URL: mongodb://localhost:27017/myapp_test # Test MongoDB'ye bağlantı URL'si
 
-          - name: Scan for secrets with TruffleHog
-            uses: trufflesecurity/trufflehog@main
-            with:
-              path: ./
-              base: HEAD~1
-              head: HEAD
+      - name: Scan for secrets with TruffleHog # Repoda hassas bilgiler (secret'lar) tarar
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: HEAD~1
+          head: HEAD
 
-          - name: Log in to Docker Hub
-            if: github.event_name == 'push'
-            uses: docker/login-action@v3
-            with:
-              username: ${{ env.DOCKERHUB_USERNAME }}
-              password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub # Docker Hub'a giriş yapar
+        if: github.event_name == 'push' # Sadece push event'inde çalışır
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }} # Secret olarak saklanan Docker Hub token'ı
 
-          - name: Build and Push Frontend Docker Image
-            if: github.event_name == 'push'
-            uses: docker/build-push-action@v5
-            with:
-              context: ./frontend
-              file: ./frontend/Dockerfile
-              push: true
-              tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-              no-cache: true # Docker build önbelleğini devre dışı bırak
+      - name: Build and Push Frontend Docker Image # Frontend Docker imajını oluşturur ve push eder
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend # Dockerfile'ın ve build context'in bulunduğu dizin
+          file: ./frontend/Dockerfile # Frontend Dockerfile yolu
+          push: true # Docker Hub'a push et
+          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }} # Dinamik etiket oluşturur (örn: meyfcsalik/frontend:staging-commitsha)
+          no-cache: true # Docker build önbelleğini devre dışı bırak (temiz build için)
 
-          - name: Build and Push Backend Docker Image
-            if: github.event_name == 'push'
-            uses: docker/build-push-action@v5
-            with:
-              context: ./backend
-              file: ./backend/Dockerfile
-              push: true
-              tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-              no-cache: true # Docker build önbelleğini devre dışı bırak
+      - name: Build and Push Backend Docker Image # Backend Docker imajını oluşturur ve push eder
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          no-cache: true # Docker build önbelleğini devre dışı bırak
 
-      deploy:
-        name: Deploy to K3s
-        needs: test-and-build
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-        runs-on: self-hosted
-        environment: ${{ needs.test-and-build.outputs.deploy_env }}
-        steps:
-          - name: Deploy via SSH and Helm # SSH üzerinden K3s sunucusuna bağlan ve Helm ile dağıtım yap
-            uses: appleboy/ssh-action@v1.0.3
-            with:
-              host: ${{ secrets.K3S_HOST_IP }}
-              username: ${{ secrets.K3S_USER }}
-              key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
-              script: |
-                # --- SSH bağlantısı kurulduktan sonra K3s sunucusunda çalışacak komutlar ---
+  deploy: # İkinci iş: Uygulamayı K3s kümesine dağıtır
+    name: Deploy to K3s
+    needs: test-and-build # Bu işin, 'test-and-build' işi başarıyla tamamlandıktan sonra başlamasını sağlar
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') # Sadece 'main' veya 'develop' dallarına yapılan push'larda çalışır
+    runs-on: self-hosted # Bu işin kendi barındırdığınız (self-hosted) runner üzerinde çalışacağını belirtir
+    environment: ${{ needs.test-and-build.outputs.deploy_env }} # Dağıtım ortamını belirler (GitHub ortamları ile entegrasyon)
+    steps:
+      - name: Deploy via SSH and Helm # SSH üzerinden K3s sunucusuna bağlanır ve Helm ile dağıtım yapar
+        uses: appleboy/ssh-action@v1.0.3 # SSH bağlantısı kurmak için Appleboy aksiyonunu kullanır
+        with:
+          host: ${{ secrets.K3S_HOST_IP }} # K3s sunucusunun IP adresi (GitHub secret'larından gelir)
+          username: ${{ secrets.K3S_USER }} # SSH kullanıcı adı (GitHub secret'larından gelir)
+          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }} # SSH özel anahtarı (GitHub secret'larından gelir)
+          script: | # SSH bağlantısı kurulduktan sonra K3s sunucusunda çalışacak bash script'i
+            # --- SSH bağlantısı kurulduktan sonra K3s sunucusunda çalışacak komutlar ---
 
-                # GitHub Actions çıktılarından Docker imaj etiketlerini al
-                FRONTEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-                BACKEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
-                DEPLOY_ENV_NAME="${{ needs.test-and-build.outputs.deploy_env }}" # Ortam adını al (staging/production)
-                DEPLOY_NAMESPACE="default" # Uygulamanızın dağıtılacağı Kubernetes namespace'i (isteğe göre değiştirin)
+            # GitHub Actions çıktılarından (önceki işten) Docker imaj etiketlerini alır
+            FRONTEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
+            BACKEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
+            DEPLOY_ENV_NAME="${{ needs.test-and-build.outputs.deploy_env }}" # Dağıtım ortamı adı (staging/production)
+            DEPLOY_NAMESPACE="default" # Uygulamanın dağıtılacağı Kubernetes namespace'i (isteğe göre değiştirilebilir)
 
-                echo "Deploying Frontend: $FRONTEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
-                echo "Deploying Backend: $BACKEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
-                echo "Deploying environment: $DEPLOY_ENV_NAME"
+            echo "Deploying Frontend: $FRONTEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
+            echo "Deploying Backend: $BACKEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
+            echo "Deploying environment: $DEPLOY_ENV_NAME"
 
-                # Helm upgrade --install komutunu kullanarak dağıtım yapın.
-                # --install: Eğer release yoksa kurar.
-                # --namespace: Hangi namespace'e dağıtılacağını belirtir.
-                # --values: Ortama özel values dosyasını kullanır.
-                # --set: values.yaml dosyasındaki değerleri override etmek için kullanılır.
-                # Docker imaj etiketlerini dinamik olarak güncel değerlerle iletiyoruz.
-                
-                # Ortama özel values dosyasını seçme
-                HELM_VALUES_FILE="${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }}/values-${DEPLOY_ENV_NAME}.yaml"
+            # Helm chart'ı yükseltir (upgrade) veya kurar (install).
+            # --install: Eğer release yoksa (ilk dağıtım) kurar, varsa yükseltir.
+            # --namespace: Dağıtımın yapılacağı Kubernetes namespace'ini belirtir.
+            # -f "$HELM_VALUES_FILE": Ortama özel values dosyasını kullanır.
+            # --set: values.yaml dosyasındaki belirli değerleri CLI üzerinden override etmek için kullanılır.
+            # Docker imaj etiketlerini dinamik olarak güncel değerlerle iletiyoruz.
+            
+            # Ortama özel values dosyasının yolunu oluşturur (K3s sunucusundaki yolu)
+            HELM_VALUES_FILE="${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }}/values-${DEPLOY_ENV_NAME}.yaml"
 
-                helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} \
-                  --namespace "$DEPLOY_NAMESPACE" \
-                  -f "$HELM_VALUES_FILE" \ # Ortama özel values dosyasını kullan
-                  --set frontend.image.repository="${{ env.DOCKERHUB_USERNAME }}/frontend" \
-                  --set frontend.image.tag="${FRONTEND_IMAGE_FULL_TAG##*:}" \
-                  --set backend.image.repository="${{ env.DOCKERHUB_USERNAME }}/backend" \
-                  --set backend.image.tag="${BACKEND_IMAGE_FULL_TAG##*:}" \
-                  --wait # Dağıtım tamamlanana kadar bekler
+            helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} \
+              --namespace "$DEPLOY_NAMESPACE" \
+              -f "$HELM_VALUES_FILE" \ # Ortama özel values dosyasını kullan
+              --set frontend.image.repository="${{ env.DOCKERHUB_USERNAME }}/frontend" \ # Frontend imaj repository'sini override eder
+              --set frontend.image.tag="${FRONTEND_IMAGE_FULL_TAG##*:}" \ # Frontend imaj etiketini override eder (tam URL'den sadece etiket kısmını alır)
+              --set backend.image.repository="${{ env.DOCKERHUB_USERNAME }}/backend" \ # Backend imaj repository'sini override eder
+              --set backend.image.tag="${BACKEND_IMAGE_FULL_TAG##*:}" \ # Backend imaj etiketini override eder
+              --wait # Dağıtım tamamlanana kadar komutun beklemesini sağlar
 
-                echo "Helm deployment initiated. Checking rollout status..."
+            echo "Helm deployment initiated. Checking rollout status..."
 
-                # Dağıtımın tamamlanmasını ve podların hazır olmasını bekle
-                # Helm chart'ınızdaki deployment adlarınız genellikle release adı + komponent adı şeklindedir (myapp-frontend, myapp-backend)
-                kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-frontend -n "$DEPLOY_NAMESPACE"
-                kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-backend -n "$DEPLOY_NAMESPACE"
+            # Dağıtımın tamamlanmasını ve podların hazır olmasını bekle
+            # Helm chart'ınızdaki deployment adları genellikle release adı + komponent adı şeklindedir (örn: myapp-frontend, myapp-backend)
+            kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-frontend -n "$DEPLOY_NAMESPACE"
+            kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-backend -n "$DEPLOY_NAMESPACE"
 
-                echo "Deployment rollout checks complete."
-                echo "Application should now be updated."
-    
+            echo "Deployment rollout checks complete."
+            echo "Application should now be updated."
