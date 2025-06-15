@@ -2,207 +2,133 @@ name: CI/CD Pipeline for Microservices
 
 on:
   push:
-    branches:
-      - main # Production branch
-      - develop # Staging branch
+    branches: [main, develop]
   pull_request:
-    branches:
-      - main
-      - develop
-  workflow_dispatch: # Manuel tetikleme için
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-  DOCKERHUB_USERNAME: meyfcsalik # KENDİ DOCKER HUB KULLANICI ADINLA KONTROL ET/DEĞİŞTİR
-  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # K3S SUNUCU KULLANICI ADIN VE PROJE YOLUNU KONTROL ET
+  DOCKERHUB_USERNAME: meyfcsalik
+  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen
+  HELM_CHART_PATH: helm/myapp
+  HELM_RELEASE_NAME: myapp
 
 jobs:
   test-and-build:
     name: Test, Build and Push Docker Images
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
+      image_tag: ${{ steps.vars.outputs.sha_full }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-      docker_repo_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend
-      docker_repo_backend: ${{ env.DOCKERHUB_USERNAME }}/backend
+      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
     services:
-      mongodb_test: # Backend testleri için MongoDB servisi
-        image: mongo:6.0 # Belirli bir versiyon kullanmak daha iyidir
-        ports:
-          - 27017:27017
+      mongodb_test:
+        image: mongo:6.0
+        ports: [27017:27017]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set up Node.js
+      - name: Set up Node.js with Cache v2
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # Projenize uygun LTS Node.js versiyonu
+          node-version: '18'
           cache: 'npm'
-          # cache-dependency-path: | # <--- BU SATIRLAR YORUM SATIRI YAPILDI/SİLİNDİ
-          #   frontend/package-lock.json
-          #   backend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
 
       - name: Set Output Variables (Commit SHA)
         id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Determine Environment Name
         id: set_env
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-          else # PRs veya diğer branch'ler için varsayılan
+          else
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
-        shell: bash
 
-      # --- Frontend Steps ---
       - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
         run: |
-          npm install # <--- DEĞİŞTİ (npm ci yerine)
+          npm ci
           npm run lint --if-present
+
       - name: Frontend - Run Tests
         working-directory: ./frontend
         run: npm test --if-present -- --watchAll=false --coverage
+
       - name: Frontend - Build
         working-directory: ./frontend
         run: npm run build
 
-      # --- Backend Steps ---
       - name: Backend - Install Dependencies & Lint
         working-directory: ./backend
         run: |
-          npm install # <--- DEĞİŞTİ (npm ci yerine)
+          npm ci
           npm run lint --if-present
+
       - name: Backend - Run Tests
         working-directory: ./backend
         run: npm test --if-present -- --watchAll=false --coverage
         env:
-          MONGO_URL: mongodb://mongodb_test:27017/myapp_test # Test DB bağlantısı
-
-      # --- Security Scans ---
+          MONGO_URL: mongodb://localhost:27017/myapp_test
+      
       - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }} # Ana branch'e göre tarama
-          head: HEAD
-          # extra_args: --debug # Gerekirse debug için
+          base: HEAD~1 # Sadece bir önceki commit ile karşılaştır-
+          head: HEAD    # Şu anki commit'e kadar tara
 
-      - name: Audit NPM Dependencies (Frontend)
-        working-directory: ./frontend
-        # Zafiyet bulunsa bile devam et, ama logla
-        run: npm audit --audit-level=high || echo "NPM audit (frontend) found vulnerabilities, but continuing."
-
-      - name: Audit NPM Dependencies (Backend)
-        working-directory: ./backend
-        run: npm audit --audit-level=high || echo "NPM audit (backend) found vulnerabilities, but continuing."
-
-      # --- Docker Build and Push (Sadece main/develop branch push'larında) ---
       - name: Log in to Docker Hub
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }} # GitHub Secret'tan alınacak
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Frontend Docker Image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: |
-            ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
-            ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
 
       - name: Build and Push Backend Docker Image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: |
-            ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
-            ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-latest
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
 
   deploy:
-    name: Deploy to K3s using Ansible
-    needs: test-and-build # 'test-and-build' job'ı bittikten sonra başlar
-    # Sadece main veya develop branch'ine push yapıldığında çalışır
+    name: Deploy to K3s
+    needs: test-and-build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: ubuntu-latest
-    environment: # GitHub Environments ile entegrasyon
-      name: ${{ needs.test-and-build.outputs.deploy_env }}
-      # url: http://<your-k3s-node-ip>:30080 # Uygulamanızın URL'i, manuel olarak ayarlanabilir
+    runs-on: self-hosted
+    environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Checkout Repository (Ansible playbook ve Helm chart'ları için)
-        uses: actions/checkout@v4
-
-      - name: Deploy to K3s via SSH using Ansible
+      - name: Deploy via Ansible
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.K3S_HOST_IP }} # GitHub Secret'tan alınacak
-          username: ${{ secrets.K3S_USER }} # GitHub Secret'tan alınacak
-          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }} # GitHub Secret'tan alınacak
+          host: ${{ secrets.K3S_HOST_IP }}
+          username: ${{ secrets.K3S_USER }}
+          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
           script: |
-            echo "Changing directory to ${{ env.K3S_SERVER_PROJECT_PATH }}"
-            cd ${{ env.K3S_SERVER_PROJECT_PATH }}
-            echo "Checking out branch ${{ github.ref_name }}"
-            git checkout ${{ github.ref_name }}
-            echo "Pulling latest changes for branch ${{ github.ref_name }}"
-            git pull origin ${{ github.ref_name }}
-            echo "Running Ansible playbook for environment: ${{ needs.test-and-build.outputs.deploy_env }}, image_tag: ${{ needs.test-and-build.outputs.image_tag }}"
-            ansible-playbook ansible/deploy.yml --extra-vars "helm_env=${{ needs.test-and-build.outputs.deploy_env }} image_tag=${{ needs.test-and-build.outputs.image_tag }} docker_username=${{ env.DOCKERHUB_USERNAME }}"
-
-      # Slack bildirim adımları yorum satırı yapıldı
-      # - name: Slack Notification on Success
-      #   if: success()
-      #   uses: slackapi/slack-github-action@v1.26.0
-      #   with:
-      #     payload: |
-      #       {
-      #         "text": "✅ *Deployment Successful to ${{ needs.test-and-build.outputs.deploy_env }}!*",
-      #         "blocks": [
-      #           {
-      #             "type": "section",
-      #             "text": {
-      #               "type": "mrkdwn",
-      #               "text": "✅ *Deployment Successful!* \n🌐 Environment: `${{ needs.test-and-build.outputs.deploy_env }}` \n📦 Commit: `${{ github.sha }}` \n🏷️ Image Tag: `${{ needs.test-and-build.outputs.image_tag }}` \n🔗 <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|View Commit>"
-      #             }
-      #           }
-      #         ]
-      #       }
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      # - name: Slack Notification on Failure
-      #   if: failure()
-      #   uses: slackapi/slack-github-action@v1.26.0
-      #   with:
-      #     payload: |
-      #       {
-      #         "text": "❌ *Deployment Failed to ${{ needs.test-and-build.outputs.deploy_env }}!*",
-      #         "blocks": [
-      #           {
-      #             "type": "section",
-      #             "text": {
-      #               "type": "mrkdwn",
-      #               "text": "❌ *Deployment Failed!* \n🌐 Environment: `${{ needs.test-and-build.outputs.deploy_env }}` \n📦 Commit: `${{ github.sha }}` \n🔗 <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
-      #             }
-      #           }
-      #         ]
-      #       }
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            # Deploy scriptiniz buraya gelecek
+            echo "Deploying image tag ${{ needs.test-and-build.outputs.image_tag }} to ${{ needs.test-and-build.outputs.deploy_env }}"

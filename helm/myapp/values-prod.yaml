@@ -1,0 +1,57 @@
+# Ortam Adı
+environment: production
+
+frontend:
+  replicaCount: 2 # Üretimde daha fazla replica
+  image:
+    tag: "production-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+backend:
+  replicaCount: 2
+  image:
+    tag: "production-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+  env:
+    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-mongodb:27017/myapp_production"
+    NODE_ENV: "production"
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+mongodb:
+  replicaCount: 1 # Production için replikasyonlu bir MongoDB kurulumu (örn: Bitnami chart'ı) daha iyi olabilir.
+                  # Şimdilik tek replica StatefulSet.
+  persistence:
+    size: "10Gi"
+
+monitoring:
+  enabled: true # Üretimde izlemeyi aktif et
+  kube-prometheus-stack:
+    # adminPassword CI/CD'den gelecek
+    prometheus:
+      prometheusSpec:
+        replicas: 1 # Üretim için 2 veya daha fazla replica ve yeterli kaynak ayırın
+        retention: "30d"
+        resources:
+          requests:
+            cpu: "1"
+            memory: "4Gi"
+          limits:
+            cpu: "2"
+            memory: "8Gi"
+    grafana:
+      # adminPassword: "" # CI/CD'den gelecek
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
