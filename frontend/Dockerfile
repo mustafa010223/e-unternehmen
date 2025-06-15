@@ -17,27 +17,30 @@ USER appuser
 RUN npm ci --ignore-scripts
 
 COPY --chown=appuser:appgroup . .
+# Frontend uygulamaları için 'build' script'i çalıştırılır.
+# Bu script, uygulamanın üretim için optimize edilmiş statik dosyalarını oluşturur.
 RUN npm run build
 
 # Production stage
 FROM nginx:1.27-alpine-slim
 
-# Güvenlik iyileştirmeleri
+# Güvenlik iyileştirmeleri: Nginx'in önbellek dizinlerinin sahipliğini ayarla
 RUN chown -R nginx:nginx /var/cache/nginx && \
     chmod -R 755 /var/cache/nginx && \
     rm -rf /etc/nginx/conf.d/*.default
 
-# Build çıktısını kopyala
+# Builder aşamasında oluşturulan build çıktısını Nginx'in servis edeceği dizine kopyala
 COPY --from=builder --chown=nginx:nginx /app/build /usr/share/nginx/html
 
-# Nginx konfigürasyonu
+# Nginx konfigürasyon dosyasını kopyala
+# Bu dosyanın (frontend/nginx.conf) projenin 'frontend' dizininde bulunması gerekmektedir.
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Sağlık kontrolü ekle
+# Sağlık kontrolü ekle: Nginx sunucusunun çalıştığını doğrular
 HEALTHCHECK --interval=30s --timeout=3s \
     CMD curl -f http://localhost/ || exit 1
 
-# Port ve çalıştırma komutu
+# Konteynerin dışarıya açılacağı portu belirt
 EXPOSE 80
+# Nginx'i arka planda değil, foreground'da çalıştırarak Docker'ın konteyneri takip etmesini sağla
 CMD ["nginx", "-g", "daemon off;"]
-
