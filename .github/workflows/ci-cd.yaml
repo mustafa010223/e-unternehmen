@@ -172,3 +172,4 @@
 
                 echo "Deployment rollout checks complete."
                 echo "Application should now be updated."
+    
