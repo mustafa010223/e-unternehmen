@@ -90,8 +90,9 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          # önceki geçersiz parametreler silindi
-          exclude: 'mongodb:\/\/localhost:27017' # BU SATIR EKLENDİ - TruffleHog aksiyonu için doğru dışlama parametresi
+          # Önceki hatalı parametreler (fail_on_result, exclude, extra_args) silindi
+          secrets_ignore_patterns: | # BU SATIR EKLENDİ
+            - 'mongodb:\/\/localhost:27017' # Bu deseni yoksay
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
