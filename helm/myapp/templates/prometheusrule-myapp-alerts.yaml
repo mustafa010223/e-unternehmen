@@ -19,11 +19,10 @@ spec:
             severity: warning
             namespace: "{{ .Release.Namespace }}"
           annotations:
-            # Prometheus değişkenleri Helm tarafından literal olarak geçirilmelidir.
-            # {{ }} içindeki stringler Helm tarafından yorumlanmaz, doğrudan Prometheus'a iletilir.
-            summary: "High Pod Restart Count for {{ "{{" }} $labels.pod {{ "}}" }}" # Düzeltildi
-            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} in namespace {{ "{{" }} $labels.namespace {{ "}}" }} has restarted more than 2 times in the last 15 minutes." # Düzeltildi
-            runbook_url: "https://your-runbook-url/pod-restarts"
+            # Prometheus değişkenlerini içeren stringleri, Helm'in yorumlamaması için 'quote' filtresi ile sarmalıyoruz.
+            summary: {{ "High Pod Restart Count for {{ $labels.pod }}" | quote }}
+            description: {{ "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted more than 2 times in the last 15 minutes." | quote }}
+            # runbook_url: "https://your-runbook-url/pod-restarts"
 
         - alert: HighCPUUsage{{ include "myapp.name" | title | replace "-" "" }}
           expr: >
@@ -36,9 +35,9 @@ spec:
             severity: warning
             namespace: "{{ .Release.Namespace }}"
           annotations:
-            summary: "High CPU Usage for {{ "{{" }} $labels.container {{ "}}" }} in {{ "{{" }} $labels.pod {{ "}}" }}" # Düzeltildi
-            description: "Container {{ "{{" }} $labels.container {{ "}}" }} in pod {{ "{{" }} $labels.pod {{ "}}" }} (namespace {{ "{{" }} $labels.namespace {{ "}}" }}) is using over 80%% of its CPU limit." # Düzeltildi
-            value: "{{ "{{" }} $value | printf \"%.2f\" {{ "}}" }}%" # Düzeltildi
+            summary: {{ "High CPU Usage for {{ $labels.container }} in {{ $labels.pod }}" | quote }}
+            description: {{ "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is using over 80% of its CPU limit." | quote }}
+            value: {{ "{{ $value | printf \"%.2f\" }}%" | quote }}
 
         - alert: HighMemoryUsage{{ include "myapp.name" | title | replace "-" "" }}
           expr: >
@@ -51,7 +50,7 @@ spec:
             severity: critical
             namespace: "{{ .Release.Namespace }}"
           annotations:
-            summary: "High Memory Usage for {{ "{{" }} $labels.container {{ "}}" }} in {{ "{{" }} $labels.pod {{ "}}" }}" # Düzeltildi
-            description: "Container {{ "{{" }} $labels.container {{ "}}" }} in pod {{ "{{" }} $labels.pod {{ "}}" }} (namespace {{ "{{" }} $labels.namespace {{ "}}" }}) is using over 85%% of its memory limit." # Düzeltildi
-            value: "{{ "{{" }} $value | printf \"%.2f\" {{ "}}" }}%" # Düzeltildi
+            summary: {{ "High Memory Usage for {{ $labels.container }} in {{ $labels.pod }}" | quote }}
+            description: {{ "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is using over 85% of its memory limit." | quote }}
+            value: {{ "{{ $value | printf \"%.2f\" }}%" | quote }}
 {{- end }}
