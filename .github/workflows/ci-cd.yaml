@@ -90,8 +90,8 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          # fail_on_result: false # Bu satır daha önce silindiği için burada yok
-          # extra_args: --exclude-regex "mongodb:\/\/localhost:27017" # BU SATIR SİLİNDİ, GEÇERSİZ PARAMETRE
+          # önceki geçersiz parametreler silindi
+          exclude: 'mongodb:\/\/localhost:27017' # BU SATIR EKLENDİ - TruffleHog aksiyonu için doğru dışlama parametresi
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
