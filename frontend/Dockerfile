@@ -5,9 +5,14 @@ FROM node:18-alpine AS builder
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
+
+# package.json dosyalarını kopyalamadan önce /app dizininin sahipliğini appuser'a ver
+# Bu, npm ci'nin node_modules dizinini oluşturabilmesi için gerekli
+RUN chown -R appuser:appgroup /app
+
 COPY --chown=appuser:appgroup package*.json ./
 
-# Non-root kullanıcıyla bağımlılıkları yükle
+# Non-root kullanıcıya geç ve bağımlılıkları yükle
 USER appuser
 RUN npm ci --ignore-scripts
 
@@ -30,8 +35,9 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Sağlık kontrolü ekle
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl -f http://localhost/ || exit 1
+    CMD curl -f http://localhost/ || exit 1
 
 # Port ve çalıştırma komutu
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
+

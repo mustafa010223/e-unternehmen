@@ -1,0 +1,8 @@
+# pack-refs with: peeled fully-peeled sorted 
+35110f8b0bfa6a31f14ad22d6f48ff76d55f073b refs/heads/develop
+5e07c58a8c863857a8e24c9225ce9cc802605509 refs/heads/fix/trufflehog-ci
+34669bcccc1912a750c4b3c0ffbe8e842dc51e09 refs/heads/main
+e830073e207871ea84f2f4f108934eb1cb47f880 refs/heads/refactor-helm-structure
+124bae96c2edf29fa9cc1eb62169e87e818246df refs/pull/1/head
+35110f8b0bfa6a31f14ad22d6f48ff76d55f073b refs/pull/2/head
+34669bcccc1912a750c4b3c0ffbe8e842dc51e09 refs/pull/3/head

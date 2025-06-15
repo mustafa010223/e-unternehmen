@@ -1,21 +1,43 @@
-FROM node:18-alpine
+# Builder stage
+FROM node:18-alpine AS builder
 
-WORKDIR /usr/src/app
+# Güvenlik için non-root kullanıcı oluştur
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-COPY package*.json ./
+WORKDIR /app
 
-# Install app dependencies
-# For production, it's better to use 'npm ci --omit=dev'
-# to only install production dependencies and ensure a clean install
-RUN npm ci --omit=dev
+# package.json dosyalarını kopyalamadan önce /app dizininin sahipliğini appuser'a ver
+# Bu, npm ci'nin node_modules dizinini oluşturabilmesi için gerekli
+RUN chown -R appuser:appgroup /app
 
-COPY . .
+COPY --chown=appuser:appgroup package*.json ./
 
-EXPOSE 5000
+# Non-root kullanıcıya geç ve bağımlılıkları yükle
+USER appuser
+RUN npm ci --ignore-scripts
 
-# Healthcheck instruction for Docker to verify container health,
-# Kubernetes will use its own probes defined in the deployment YAML
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/healthz || exit 1
+COPY --chown=appuser:appgroup . .
+RUN npm run build
 
-CMD [ "node", "index.js" ]
+# Production stage
+FROM nginx:1.27-alpine-slim
+
+# Güvenlik iyileştirmeleri
+RUN chown -R nginx:nginx /var/cache/nginx && \
+    chmod -R 755 /var/cache/nginx && \
+    rm -rf /etc/nginx/conf.d/*.default
+
+# Build çıktısını kopyala
+COPY --from=builder --chown=nginx:nginx /app/build /usr/share/nginx/html
+
+# Nginx konfigürasyonu
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Sağlık kontrolü ekle
+HEALTHCHECK --interval=30s --timeout=3s \
+    CMD curl -f http://localhost/ || exit 1
+
+# Port ve çalıştırma komutu
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+
