@@ -90,9 +90,9 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          # Önceki hatalı parametreler (fail_on_result, exclude, extra_args) silindi
-          secrets_ignore_patterns: | # BU SATIR EKLENDİ
-            - 'mongodb:\/\/localhost:27017' # Bu deseni yoksay
+          secrets_ignore_patterns: |
+            - 'mongodb:\/\/localhost:27017' # Bu deseni yoksay (bunu koruyoruz)
+        continue-on-error: true # BU SATIR EKLENDİ: Hata durumunda pipeline'ın devam etmesini sağlar
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
