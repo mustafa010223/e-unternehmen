@@ -1,43 +1,35 @@
-# Builder stage
-FROM node:18-alpine AS builder
+    # Backend Builder/Runtime stage
+    FROM node:18-alpine
 
-# Güvenlik için non-root kullanıcı oluştur
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+    # Güvenlik için non-root kullanıcı oluştur
+    RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-WORKDIR /app
+    WORKDIR /usr/src/app
 
-# package.json dosyalarını kopyalamadan önce /app dizininin sahipliğini appuser'a ver
-# Bu, npm ci'nin node_modules dizinini oluşturabilmesi için gerekli
-RUN chown -R appuser:appgroup /app
+    # package.json dosyalarını kopyalamadan önce /usr/src/app dizininin sahipliğini appuser'a ver
+    # Bu, npm bağımlılıklarının doğru izinlerle kurulabilmesi için gerekli
+    RUN chown -R appuser:appgroup /usr/src/app
 
-COPY --chown=appuser:appgroup package*.json ./
+    COPY --chown=appuser:appgroup package*.json ./
 
-# Non-root kullanıcıya geç ve bağımlılıkları yükle
-USER appuser
-RUN npm ci --ignore-scripts
+    # Non-root kullanıcıya geç ve bağımlılıkları yükle
+    # --omit=dev bayrağı, sadece üretim bağımlılıklarını kurar
+    USER appuser
+    RUN npm ci --omit=dev
 
-COPY --chown=appuser:appgroup . .
-RUN npm run build
+    # Geri kalan uygulama kodunu kopyala
+    COPY --chown=appuser:appgroup . .
 
-# Production stage
-FROM nginx:1.27-alpine-slim
+    # *** Bu satırı kaldırdık/yorum satırı yaptık, çünkü backend genellikle 'build' adımı gerektirmez ***
+    # RUN npm run build 
 
-# Güvenlik iyileştirmeleri
-RUN chown -R nginx:nginx /var/cache/nginx && \
-    chmod -R 755 /var/cache/nginx && \
-    rm -rf /etc/nginx/conf.d/*.default
+    # Konteynerin dışarıya açılacağı portu belirt
+    EXPOSE 5000
 
-# Build çıktısını kopyala
-COPY --from=builder --chown=nginx:nginx /app/build /usr/share/nginx/html
+    # Sağlık kontrolü ekle: Uygulamanın çalıştığını ve yanıt verdiğini doğrular
+    HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+        CMD curl -f http://localhost:5000/healthz || exit 1
 
-# Nginx konfigürasyonu
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Sağlık kontrolü ekle
-HEALTHCHECK --interval=30s --timeout=3s \
-    CMD curl -f http://localhost/ || exit 1
-
-# Port ve çalıştırma komutu
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+    # Uygulamayı başlatma komutu
+    CMD [ "node", "index.js" ]
 
