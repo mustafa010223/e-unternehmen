@@ -1,0 +1,50 @@
+# Ortam Adı
+environment: staging
+
+frontend:
+  replicaCount: 1
+  image:
+    tag: "staging-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+
+backend:
+  replicaCount: 1
+  image:
+    tag: "staging-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+  env:
+    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-mongodb:27017/myapp_staging"
+    NODE_ENV: "staging"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+mongodb:
+  persistence:
+    size: "2Gi"
+
+monitoring:
+  enabled: true # Staging'de izlemeyi aktif et
+  kube-prometheus-stack:
+    prometheus:
+      prometheusSpec:
+        replicas: 1
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+    grafana:
+      # adminPassword: "" # CI/CD'den gelecek
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"

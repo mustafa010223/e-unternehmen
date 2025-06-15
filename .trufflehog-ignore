@@ -1,0 +1,9 @@
+[
+  {
+    "path": "config/dev.env",
+    "reason": "local dev Mongo URI",
+    "regex": "mongodb://localhost:27017"
+  }
+]
+
+
