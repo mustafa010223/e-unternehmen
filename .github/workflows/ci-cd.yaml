@@ -133,13 +133,21 @@ jobs:
           pwd
           ls -F
           ls -F ansible/
-          ls -F helm/my-app # Helm chart'ın ana dizini
+          ls -F helm/myapp # Helm chart'ın ana dizini
 
       - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 python3-pip
-          pip3 install ansible openshift 
+          # Sanal ortam için gerekli paketi yükle
+          sudo apt-get install -y python3-venv
+          
+          # Sanal ortam oluştur ve etkinleştir
+          python3 -m venv .venv
+          source .venv/bin/activate
+          
+          # Ansible ve openshift'i sanal ortama kur
+          pip install ansible openshift 
+          # Sanal ortamdan çıktığınızda pip install'lar kaybolur, ancak pipeline süresince aktif kalır.
 
       - name: Configure SSH Private Key for Ansible
         run: |
@@ -152,14 +160,8 @@ jobs:
           mkdir -p ansible # Eğer silinmişse tekrar oluştur
           rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
           
-          # printf kullanarak daha kontrollü bir şekilde envanter dosyasını yazın.
-          # K8s küme master'ı için tek host'u tanımlayın.
-          # ansible_host IP'sini ve ansible_user'ı doğru girin.
-          # Buradaki mustafa kullanıcısı, SSH ile bağlanılan makinedeki kullanıcı olmalı.
           printf "[k8s_cluster]\n" > ansible/k3s-cluster.ini
           printf "master ansible_host=192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n" >> ansible/k3s-cluster.ini
-          # Eğer runner aynı makinedeyse ve SSH kullanmak istemiyorsanız, alttaki satırı kullanın:
-          # printf "master ansible_connection=local\n" >> ansible/k3s-cluster.ini
           
           # Oluşturulan dosyayı doğrulayın (hata ayıklama için)
           echo "--- Content of newly created k3s-cluster.ini ---"
@@ -175,16 +177,18 @@ jobs:
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests
         shell: bash
         run: |
+          # Sanal ortamı yeniden etkinleştir (önceki adımın shell'i kapandığı için)
+          source .venv/bin/activate
+          
           # --- Ansible Envanter ve Bağlantı Hata Ayıklama Başlangıcı ---
           echo "--- Debugging Ansible Inventory and Connectivity ---"
-          which ansible # Ansible'ın nerede olduğunu göster
+          which ansible # Ansible'ın nerede olduğunu göster (sanal ortamdaki)
           ansible --version # Ansible sürümünü göster
           echo "Contents of ansible/k3s-cluster.ini:"
           cat ansible/k3s-cluster.ini # Envanter dosyasının içeriğini göster
           echo "Ansible Inventory List (should show k8s_cluster and master host):"
           ansible-inventory -i ansible/k3s-cluster.ini --list # Ansible'ın envanteri nasıl gördüğünü göster
           echo "Testing SSH connectivity to master (192.168.0.60):"
-          # Tek makine olduğu için, master'ın IP'sini doğrudan kullanıyoruz
           ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 'echo Connected && exit' || echo "SSH connection to 192.168.0.60 failed."
           echo "--- End Debugging Ansible Inventory and Connectivity ---"
 
