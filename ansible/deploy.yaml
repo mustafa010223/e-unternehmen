@@ -10,7 +10,7 @@
     # Varsayılan değerler tanımlanabilir ancak CI/CD'de dışarıdan geleceklerdir.
     helm_release_name: "my-app" # CI/CD'den gelecek
     k8s_namespace: "default"    # CI/CD'den gelecek
-    helm_chart_path: "charts/nginx" # Kendi Helm chart'ınızın playbook'a göre yolu (örn: ansible/charts/nginx)
+   
     frontend_image_repo: "meyfcsalik/frontend" # CI/CD'den gelecek
     frontend_image_tag: "latest" # CI/CD'den gelecek
     backend_image_repo: "meyfcsalik/backend" # CI/CD'den gelecek
