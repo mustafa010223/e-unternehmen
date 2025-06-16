@@ -180,7 +180,7 @@ jobs:
         run: |
           echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt # GitHub Sırları'nda tanımlanmalı
 
-      - name: Run Ansible Playbook for Deployment, Security and E2E Tests # Ansible playbook'unu çalıştır
+      - name: Run Ansible Playbook for Deployment, Security and E2E Tests # Ansible playbook'unu çalıştır (dağıtım, güvenlik ve E2E testleri için)
         shell: bash # Sanal ortamı etkinleştirmek için shell'i belirt
         run: |
           source .venv/bin/activate # Sanal ortamı yeniden etkinleştir (önceki adımın shell'i kapandığı için)
@@ -219,7 +219,7 @@ jobs:
             --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
             --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \
-            --extra-vars "app_domain=my-app-${{ needs.test-and-build.outputs.deploy_env }}.example.com" \ # 'myapp' yerine 'my-app' kullanıldı
+            --extra-vars "app_domain=my-app-${{ needs.test-and-build.outputs.deploy_env }}.example.com" \ # BU SATIRDAKİ '\' İŞARETİNİ KALDIRDIK
             --extra-vars "deploy_env_name=${{ needs.test-and-build.outputs.deploy_env }}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False' # SSH host anahtarı doğrulamayı kapat (daha kolay hata ayıklama için)
