@@ -135,7 +135,7 @@
         ansible-vault rekey secrets.yml
         --new-vault-password-file {{ playbook_dir }}/vault_pass_new.txt # Yeni şifre dosyasının yolu
       args:
-        creates: {{ playbook_dir }}/vault_pass_new.txt # Bu dosya oluşursa komutu tekrar çalıştırma
+        creates: "{{ playbook_dir }}/vault_pass_new.txt" # Bu dosya oluşursa komutu tekrar çalıştırma
       run_once: true # Sadece bir kez çalıştır
       tags: vault
 
