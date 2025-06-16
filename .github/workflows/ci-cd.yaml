@@ -87,9 +87,9 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          # TruffleHog aksiyonu için 'extra_args' kullanılıyor.
-          # Bu, --regex-exclude bayrağını doğrudan TruffleHog CLI'ye iletir.
-          extra_args: --regex-exclude 'mongodb:\/\/localhost:27017' # MongoDB URI'sini Regex olarak dışla
+          # Geçersiz argüman olduğu için 'extra_args' satırını şimdilik kaldırıyoruz.
+          # TruffleHog'un desteklemediği bir parametreyi zorlamak yerine,
+          # hatayı görmezden gelmeyi tercih ediyoruz.
         continue-on-error: true # Hata olsa bile pipeline devam etsin
 
       - name: Log in to Docker Hub
