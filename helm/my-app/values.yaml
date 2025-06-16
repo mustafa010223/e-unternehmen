@@ -88,7 +88,7 @@ backend:
     # Helm'de "fullname" helper'ı kullanılırsa, servis adı otomatik oluşturulur.
     # Servis adı genellikle <release-name>-<component-name> şeklinde olur.
     # Bu durumda "myapp-mongodb:27017" doğru olacaktır.
-    MONGO_URL: "mongodb://{{ include "myapp.fullname" . }}-{{ .Values.mongodb.name }}:27017/myapp_default"
+    MONGO_URL: "mongodb://{{ include "my-app.fullname" . }}-{{ .Values.mongodb.name }}:27017/my-app_default"
     NODE_ENV: "development" # Geliştirme ortamı modu
   resources: {}
     # limits:
@@ -132,7 +132,7 @@ mongodb:
   service:
     # StatefulSet kullanılıyorsa, headless service için serviceName alanı ile eşleşmeli.
     # Normal bir ClusterIP servisi için sadece 'name' yeterlidir.
-    name: "{{ include "myapp.fullname" . }}-{{ .Values.mongodb.name }}" # Helm fullname helper kullanıldı
+    name: "{{ include "my-app.fullname" . }}-{{ .Values.mongodb.name }}" # Helm fullname helper kullanıldı
     type: ClusterIP # Genellikle küme içi erişim için ClusterIP
     # clusterIP: None # Eğer bu bir Headless Service ise (StatefulSet serviceName için) bu satırı etkinleştirin.
                      # Tek replikalı MongoDB için genellikle bu gerekli değildir.

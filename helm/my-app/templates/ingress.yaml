@@ -1,9 +1,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "myapp.fullname" . }}-ingress
+  name: {{ include "my-app.fullname" . }}-ingress
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    {{- include "my-app.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -22,7 +22,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "myapp.fullname" $ }}}-frontend # Frontend servisine yönlendir
+                name: {{ include "my-app.fullname" $ }}}-frontend # Frontend servisine yönlendir
                 port:
                   number: {{ $.Values.frontend.service.port }} # Frontend servisinin portu
           {{- end }}

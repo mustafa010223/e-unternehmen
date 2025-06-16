@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "myapp.fullname" . }}-backend
+  name: {{ include "my-app.fullname" . }}-backend
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    {{- include "my-app.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ .Values.backend.name }}
 spec:
   type: {{ .Values.backend.service.type }}
@@ -13,5 +13,5 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "myapp.selectorLabels" . | nindent 4 }}
+    {{- include "my-app.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: {{ .Values.backend.name }}

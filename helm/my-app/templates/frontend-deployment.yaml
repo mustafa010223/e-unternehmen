@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "myapp.fullname" . }}-frontend
+  name: {{ include "my-app.fullname" . }}-frontend
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    {{- include "my-app.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ .Values.frontend.name }}
 spec:
   replicas: {{ .Values.frontend.replicaCount }}
   selector:
     matchLabels:
-      {{- include "myapp.selectorLabels" . | nindent 6 }}
+      {{- include "my-app.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: {{ .Values.frontend.name }}
   template:
     metadata:
@@ -18,14 +18,14 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "myapp.selectorLabels" . | nindent 8 }}
+        {{- include "my-app.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: {{ .Values.frontend.name }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      serviceAccountName: {{ include "my-app.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:

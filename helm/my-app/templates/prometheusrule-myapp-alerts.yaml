@@ -2,18 +2,18 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: {{ include "myapp.fullname" . }}-app-alerts
+  name: {{ include "my-app.fullname" . }}-app-alerts
   namespace: {{ .Values.monitoring.kube_prometheus_stack.namespace | default "monitoring" }}
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    {{- include "my-app.labels" . | nindent 4 }}
     release: {{ .Release.Name }}
     app.kubernetes.io/part-of: kube-prometheus-stack
 spec:
   groups:
-    - name: {{ include "myapp.name" . }}.rules
+    - name: {{ include "my-app.name" . }}.rules
       rules:
-        - alert: HighPodRestartCount{{ include "myapp.name" | title | replace "-" "" }}
-          expr: rate(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "myapp.fullname" . }}-(frontend|backend)-.*"}[15m]) * 60 * 5 > 2
+        - alert: HighPodRestartCount{{ include "my-app.name" | title | replace "-" "" }}
+          expr: rate(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*"}[15m]) * 60 * 5 > 2
           for: 10m
           labels:
             severity: warning
@@ -24,11 +24,11 @@ spec:
             description: {{ "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted more than 2 times in the last 15 minutes." | quote }}
             # runbook_url: "https://your-runbook-url/pod-restarts"
 
-        - alert: HighCPUUsage{{ include "myapp.name" | title | replace "-" "" }}
+        - alert: HighCPUUsage{{ include "my-app.name" | title | replace "-" "" }}
           expr: >
-            sum(rate(container_cpu_usage_seconds_total{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "myapp.fullname" . }}-(frontend|backend)-.*", container!=""}[5m])) by (pod, container, namespace)
+            sum(rate(container_cpu_usage_seconds_total{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*", container!=""}[5m])) by (pod, container, namespace)
             /
-            sum(kube_pod_container_resource_limits{resource="cpu", namespace="{{ .Release.Namespace }}", pod=~"^{{ include "myapp.fullname" . }}-(frontend|backend)-.*", container!=""}) by (pod, container, namespace)
+            sum(kube_pod_container_resource_limits{resource="cpu", namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*", container!=""}) by (pod, container, namespace)
             * 100 > 80
           for: 15m
           labels:
@@ -39,11 +39,11 @@ spec:
             description: {{ "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is using over 80% of its CPU limit." | quote }}
             value: {{ "{{ $value | printf \"%.2f\" }}%" | quote }}
 
-        - alert: HighMemoryUsage{{ include "myapp.name" | title | replace "-" "" }}
+        - alert: HighMemoryUsage{{ include "my-app.name" | title | replace "-" "" }}
           expr: >
-            sum(container_memory_working_set_bytes{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "myapp.fullname" . }}-(frontend|backend)-.*", container!=""}) by (pod, container, namespace)
+            sum(container_memory_working_set_bytes{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*", container!=""}) by (pod, container, namespace)
             /
-            sum(kube_pod_container_resource_limits{resource="memory", namespace="{{ .Release.Namespace }}", pod=~"^{{ include "myapp.fullname" . }}-(frontend|backend)-.*", container!=""}) by (pod, container, namespace)
+            sum(kube_pod_container_resource_limits{resource="memory", namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*", container!=""}) by (pod, container, namespace)
             * 100 > 85
           for: 15m
           labels:

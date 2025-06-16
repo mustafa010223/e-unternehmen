@@ -18,7 +18,7 @@ backend:
   image:
     tag: "staging-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
   env:
-    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-mongodb:27017/myapp_staging"
+    MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_staging"
     NODE_ENV: "staging"
   resources:
     requests:

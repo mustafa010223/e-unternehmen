@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "myapp.fullname" . }}-{{ .Values.mongodb.name }}
+  name: {{ include "my-app.fullname" . }}-{{ .Values.mongodb.name }}
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    {{- include "my-app.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ .Values.mongodb.name }}
 spec:
   # serviceName, pod'lara kararlı ağ kimlikleri (DNS) sağlamak için gereklidir.
   # Bu, MongoDB Service'inizin adına işaret etmelidir.
-  serviceName: {{ .Values.mongodb.service.name | default (printf "%s-mongodb" (include "myapp.fullname" .)) }} # Burası düzeltildi
+  serviceName: {{ .Values.mongodb.service.name | default (printf "%s-mongodb" (include "my-app.fullname" .)) }} # Burası düzeltildi
   replicas: {{ .Values.mongodb.replicaCount }}
   selector:
     matchLabels:
-      {{- include "myapp.selectorLabels" . | nindent 6 }}
+      {{- include "my-app.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: {{ .Values.mongodb.name }}
   template:
     metadata:
       labels:
-        {{- include "myapp.selectorLabels" . | nindent 8 }}
+        {{- include "my-app.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: {{ .Values.mongodb.name }}
       # Eğer MongoDB metriklerini bir exporter ile topluyorsanız,
       # podAnnotations buraya eklenebilir.
@@ -29,7 +29,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      serviceAccountName: {{ include "my-app.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -50,12 +50,12 @@ spec:
                 secretKeyRef:
                   # Secret adınız (örneğin: {{ include "myapp.fullname" . }}-mongodb-credentials)
                   # Bu secret'ı ayrıca templates/ altına bir secret.yaml dosyası ile oluşturmanız önerilir.
-                  name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "myapp.fullname" .)) }}
+                  name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "my-app.fullname" .)) }}
                   key: {{ .Values.mongodb.auth.usernameKey | default "mongodb-root-username" }}
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "myapp.fullname" .)) }}
+                  name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "my-app.fullname" .)) }}
                   key: {{ .Values.mongodb.auth.passwordKey | default "mongodb-root-password" }}
             # Diğer MongoDB yapılandırma ortam değişkenleri buraya eklenebilir
             # Örneğin: MONGO_OPLOG_SIZE, MONGO_REPLICA_SET_NAME vb.
@@ -77,7 +77,7 @@ spec:
     - metadata:
         name: mongodb-data # volumeMounts.name ile eşleşmelidir
         labels:
-          {{- include "myapp.selectorLabels" . | nindent 10 }}
+          {{- include "my-app.selectorLabels" . | nindent 10 }}
           app.kubernetes.io/component: {{ .Values.mongodb.name }}
         # annotations:
         #   {{- toYaml .Values.mongodb.persistence.annotations | nindent 10 }}

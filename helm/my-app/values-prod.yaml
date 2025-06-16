@@ -18,7 +18,7 @@ backend:
   image:
     tag: "production-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
   env:
-    MONGO_URL: "mongodb://{{ include \"myapp.fullname\" . }}-mongodb:27017/myapp_production"
+    MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_production"
     NODE_ENV: "production"
   resources:
     requests:

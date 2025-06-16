@@ -3,11 +3,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: myapp-mongodb-pvc
+  name: my-app-mongodb-pvc
   labels:
-    helm.sh/chart: myapp-0.1.0
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/instance: myapp
+    helm.sh/chart: my-app-0.1.0
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
     app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: mongodb
@@ -22,12 +22,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: myapp-backend
+  name: my-app-backend
   labels:
     
-    helm.sh/chart: myapp-0.1.0
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/instance: myapp
+    helm.sh/chart: my-app-0.1.0
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
     app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: backend
@@ -40,20 +40,20 @@ spec:
       name: http
   selector:
     
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
     app.kubernetes.io/component: backend
 ---
 # Source: myapp/templates/frontend-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: myapp-frontend
+  name: my-app-frontend
   labels:
     
-    helm.sh/chart: myapp-0.1.0
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/instance: myapp
+    helm.sh/chart: my-app-0.1.0
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
     app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: frontend
@@ -67,19 +67,19 @@ spec:
       nodePort: 30081
   selector:
     
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
     app.kubernetes.io/component: frontend
 ---
 # Source: myapp/templates/mongodb-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: myapp-mongodb  # values.yaml'daki service adıyla eşleşmeli
+  name: my-app-mongodb  # values.yaml'daki service adıyla eşleşmeli
   labels:
-    helm.sh/chart: myapp-0.1.0
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/instance: myapp
+    helm.sh/chart: my-app-0.1.0
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
     app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: mongodb
@@ -91,8 +91,8 @@ spec:
       protocol: TCP
       name: mongodb
   selector:
-    app.kubernetes.io/name: myapp
-    app.kubernetes.io/instance: myapp
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
     app.kubernetes.io/component: mongodb
 ---
 # Source: myapp/templates/frontend-deployment.yaml
