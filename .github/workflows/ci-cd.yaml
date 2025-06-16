@@ -87,10 +87,9 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          # Geçersiz argüman olduğu için 'extra_args' satırını şimdilik kaldırıyoruz.
-          # TruffleHog'un desteklemediği bir parametreyi zorlamak yerine,
-          # hatayı görmezden gelmeyi tercih ediyoruz.
-        continue-on-error: true # Hata olsa bile pipeline devam etsin
+          # 'extra_args' veya 'exclude-patterns' gibi parametreler bu aksiyon sürümü için çalışmıyor gibi görünüyor.
+          # Sadece 'continue-on-error: true' kullanarak hatayı yoksayacağız.
+        continue-on-error: true # Bu adım hata verse bile pipeline'ın devam etmesini sağlar.
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
@@ -160,7 +159,7 @@ jobs:
         run: |
           # Frontend ve Backend imaj etiketlerini Bash değişkenlerine al
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-          BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
+          BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" # Hata düzeltildi: Tekrar tanımlama kaldırıldı
 
           # Bash string manipülasyonu ile sadece etiketi al (ör: "repo/image:tag" -> "tag")
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
