@@ -87,16 +87,14 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          # 'extra_args' veya 'exclude-patterns' gibi parametreler bu aksiyon sürümü için çalışmıyor gibi görünüyor.
-          # Sadece 'continue-on-error: true' kullanarak hatayı yoksayacağız.
-        continue-on-error: true # Bu adım hata verse bile pipeline'ın devam etmesini sağlar.
+        continue-on-error: true 
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }} # GitHub Sırları'nda tanımlanmalı
+          password: ${{ secrets.DOCKERHUB_TOKEN }} 
 
       - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push'
@@ -122,7 +120,7 @@ jobs:
     name: Deploy to K3s and Run Security/E2E Tests via Ansible
     needs: test-and-build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted # Kendinden barındırılan koşucu gereklidir
+    runs-on: self-hosted 
     environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
       - name: Checkout Repository on Self-Hosted Runner
@@ -133,35 +131,48 @@ jobs:
           pwd
           ls -F
           ls -F ansible/
-          ls -F helm/my-app
+          ls -F helm/my-app 
 
       - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
-          pip3 install ansible openshift # kubernetes.core modülleri için gerekebilir
+          pip3 install ansible openshift 
 
       - name: Configure SSH Private Key for Ansible
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
-          chmod 600 ~/.ssh/k8s_cluster_key.pem # GitHub Sırları'nda tanımlanmalı
+          chmod 600 ~/.ssh/k8s_cluster_key.pem 
+
+      - name: Create Ansible Inventory File on Runner
+        run: |
+          rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
+          printf "[k3s_cluster]\n" > ansible/k3s-cluster.ini
+          printf "192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n" >> ansible/k3s-cluster.ini
+          
+          echo "--- Content of newly created k3s-cluster.ini ---"
+          cat ansible/k3s-cluster.ini
+          echo "------------------------------------------------"
+          ls -l ansible/k3s-cluster.ini
+          chmod 644 ansible/k3s-cluster.ini 
+
+      - name: Verify Inventory Creation & Location # Yeni eklenen doğrulama adımı
+        run: |
+          echo "--- Checking inventory file after creation ---"
+          pwd 
+          ls -l ansible/k3s-cluster.ini 
+          cat ansible/k3s-cluster.ini 
+          echo "----------------------------------------------"
 
       - name: Provide Ansible Vault Password
-        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt # GitHub Sırları'nda tanımlanmalı
-        # Hassas bilgileri loglardan gizlemek istersen, aşağıdaki yorum satırlarını etkinleştir:
-        # shell: bash
-        # env:
-        #   ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
-        # run: echo "$ANSIBLE_VAULT_PASSWORD" > vault_pass.txt
+        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt 
 
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests
         run: |
-          # Frontend ve Backend imaj etiketlerini Bash değişkenlerine al
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-          BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" # Hata düzeltildi: Tekrar tanımlama kaldırıldı
+          BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" 
 
-          # Bash string manipülasyonu ile sadece etiketi al (ör: "repo/image:tag" -> "tag")
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
           BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
 
@@ -170,15 +181,15 @@ jobs:
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/my-app/" \
+            --extra-vars "helm_chart_path=../helm/my-app/" \ 
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
             --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
             --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \
-            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" # Uygulamanızın gerçek alan adını güncelleyin
+            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" 
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
       - name: Clean up Vault Password File
-        if: always() # Önceki adımlar başarısız olsa bile çalışır
+        if: always() 
         run: rm -f vault_pass.txt
