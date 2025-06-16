@@ -87,7 +87,7 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }} # Yalnızca main dalına push yapıldığında gönder
           tags: your-repo/your-app-frontend:latest,your-repo/your-app-frontend:${{ github.sha }} # İmaj etiketlerini ayırt et
 
-  ---
+---
 
   secret-scanning:
     runs-on: ubuntu-latest
@@ -111,7 +111,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # TruffleHog API etkileşimi için GITHUB_TOKEN kullanır
 
-  ---
+---
 
   ansible-deployment:
     runs-on: ubuntu-latest
