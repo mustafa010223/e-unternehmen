@@ -15,7 +15,7 @@
     frontend_image_tag: "latest" # CI/CD'den gelecek
     backend_image_repo: "meyfcsalik/backend" # CI/CD'den gelecek
     backend_image_tag: "latest" # CI/CD'den gelecek
-    app_domain: "uygulama-adi.example.com" # CI/CD'den gelecek
+    app_domain: "app.mustafasalik.de" # CI/CD'den gelecek
     enable_selenium_tests: true # Varsayılan olarak true, gerekirse False yapılabilir
 
   tasks:
