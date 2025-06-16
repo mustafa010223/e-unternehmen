@@ -3,7 +3,7 @@
   hosts: k8s_cluster
   become: true
   vars_files:
-    - secrets.yml 
+    - secrets.yml
 
   vars:
     helm_release_name: "my-app"
@@ -14,20 +14,21 @@
     backend_image_tag: "latest"
     app_domain: "app.mustafasalik.de"
     enable_selenium_tests: true
+    playbook_dir: "{{ lookup('env', 'PWD') }}"  # Otomatik dizin tanımlama
 
   tasks:
-    # YENİ EKLENEN GÖREV: Selenium test betiği ConfigMap'i oluştur
+    # 1. ConfigMap Oluşturma
     - name: Selenium test betiği ConfigMap'i oluştur
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('file', '{{ playbook_dir }}/selenium-test-configmap.yaml') | from_yaml }}"
+        definition: "{{ lookup('file', playbook_dir + '/selenium-test-configmap.yaml') | from_yaml }}"
       tags: configmap
 
-    # 1. Helm Dağıtımı
+    # 2. Helm Dağıtımı
     - name: Helm chart'ı güncelle
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
-        chart_ref: "{{ playbook_dir }}/../helm/my-app/" # Helm chart yolu my-app olarak güncellendi
+        chart_ref: "{{ playbook_dir }}/../helm/my-app/"
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
         values:
@@ -41,51 +42,44 @@
               tag: "{{ backend_image_tag }}"
       tags: deploy
 
-    # 2. Güvenlik Politikaları
-    - name: Pod Security Admission (PSA) uygula
+    # 3. Güncel Güvenlik Politikaları (PSP yerine)
+    - name: Pod Güvenlik Standartları uygula
       kubernetes.core.k8s:
         state: present
         definition:
-          apiVersion: policy/v1beta1
-          kind: PodSecurityPolicy
+          apiVersion: v1
+          kind: Namespace
           metadata:
-            name: restricted-psp
-          spec:
-            privileged: false
-            seLinux:
-              rule: RunAsAny
-            runAsUser:
-              rule: MustRunAsNonRoot
-            fsGroup:
-              rule: RunAsAny
-            volumes:
-            - 'configMap'
-            - 'secret'
+            name: "{{ k8s_namespace }}"
+            labels:
+              pod-security.kubernetes.io/enforce: baseline
       tags: security
 
-    # 3. Ağ Politikası
+    # 4. Ağ Politikası
     - name: Gelişmiş NetworkPolicy tanımla
       kubernetes.core.k8s:
+        state: present
         definition:
           apiVersion: networking.k8s.io/v1
           kind: NetworkPolicy
           metadata:
             name: allow-monitoring-only
+            namespace: "{{ k8s_namespace }}"
           spec:
             podSelector: {}
             policyTypes:
-            - Ingress
+              - Ingress
             ingress:
-            - ports:
-              - protocol: TCP
-                port: 9100
-              from:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: monitoring
+              - ports:
+                  - protocol: TCP
+                    port: 9100
+                from:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: monitoring
       tags: security
 
-    # 4. Test Otomasyonu - Selenium test job'u başlat
+    # 5. Selenium Testleri
     - name: Selenium test job'u başlat
       kubernetes.core.k8s:
         state: present
@@ -100,21 +94,20 @@
             template:
               spec:
                 containers:
-                - name: selenium-runner
-                  image: python:3.9-slim
-                  command: ["python3"]
-                  args:
-                    - "/app/run_tests.py"
-                    - "--env"
-                    - "{{ lookup('env', 'DEPLOY_ENV_NAME') }}"
-                    - "--app-url"
-                    - "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local"
-                  env:
-                    - name: GRID_URL
-                      value: "http://selenium-grid:4444/wd/hub"
-                  volumeMounts:
-                    - name: test-scripts-volume
-                      mountPath: /app
+                  - name: selenium-runner
+                    image: python:3.9-slim
+                    command: ["python3", "/app/run_tests.py"]
+                    args:
+                      - "--env"
+                      - "{{ lookup('env', 'DEPLOY_ENV_NAME') | default('production') }}"
+                      - "--app-url"
+                      - "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local"
+                    env:
+                      - name: GRID_URL
+                        value: "http://selenium-grid:4444/wd/hub"
+                    volumeMounts:
+                      - name: test-scripts-volume
+                        mountPath: /app
                 volumes:
                   - name: test-scripts-volume
                     configMap:
@@ -124,31 +117,38 @@
       when: enable_selenium_tests
       tags: testing
 
-    # 5. Vault Şifre Rotasyonu
+    # 6. Vault Şifre Rotasyonu
     - name: Vault şifresini otomatik döndür
       ansible.builtin.command: >
         ansible-vault rekey secrets.yml
         --new-vault-password-file {{ playbook_dir }}/vault_pass_new.txt
       args:
-        creates: "{{ playbook_dir }}/vault_pass_new.txt" # Burası düzeltildi
+        creates: "{{ playbook_dir }}/vault_pass_new.txt"
       run_once: true
       tags: vault
 
   post_tasks:
-    - name: Dağıtım başarısını doğrula (Podları kontrol et)
+    # Dağıtım doğrulama
+    - name: Pod durumlarını kontrol et
       kubernetes.core.k8s_info:
         kind: Pod
         namespace: "{{ k8s_namespace }}"
         label_selectors:
-          - app.kubernetes.io/instance={{ helm_release_name }}
+          - "app.kubernetes.io/instance={{ helm_release_name }}"
       register: deployment_pods
-      failed_when: deployment_pods.resources | length == 0
+      retries: 10
+      delay: 5
+      until: deployment_pods.resources | length > 0
 
+    # Sağlık kontrolü
     - name: Uygulama sağlık kontrolü
       uri:
         url: "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local/health"
+        method: GET
         return_content: yes
+        status_code: 200
+        timeout: 10
       register: health_check
-      until: health_check.status == 200
       retries: 10
       delay: 5
+      until: health_check.status == 200
