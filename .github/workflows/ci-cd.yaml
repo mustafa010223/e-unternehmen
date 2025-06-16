@@ -1,4 +1,3 @@
----
 name: CI/CD Pipeline for Microservices
 
 on:
@@ -14,9 +13,6 @@ concurrency:
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik
-  # K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # Artık doğrudan self-hosted runner üzerinde çalışacağımız için bu tam yola ihtiyacımız kalmayacak.
-  # HELM_CHART_PATH: helm/myapp # Bu değişkeni Helm chart'ın kendi yolundan alacağız
-  # HELM_RELEASE_NAME: myapp # Ansible playbook içinde tanımlanacak
 
 jobs:
   test-and-build:
@@ -25,12 +21,13 @@ jobs:
     outputs:
       image_tag: ${{ steps.vars.outputs.sha_full }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+      image_tag_full_frontend: "${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}"
+      image_tag_full_backend: "${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}"
     services:
       mongodb_test:
         image: mongo:6.0
-        ports: [27017:27017]
+        ports:
+          - 27017:27017
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -44,8 +41,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: |
             frontend/package-lock.json
-            backend/package-lock.lock
-      
+            backend/package-lock.json
+
       - name: Set Output Variables (Commit SHA)
         id: vars
         run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
@@ -92,7 +89,7 @@ jobs:
           base: HEAD~1
           head: HEAD
           secrets_ignore_patterns: |
-            - 'mongodb:\/\/localhost:27017'
+            - 'mongodb://localhost:27017'
         continue-on-error: true
 
       - name: Log in to Docker Hub
@@ -109,7 +106,7 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          tags: "${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}"
           no-cache: true
 
       - name: Build and Push Backend Docker Image
@@ -119,7 +116,7 @@ jobs:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          tags: "${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}"
           no-cache: true
 
   deploy:
@@ -132,18 +129,18 @@ jobs:
       - name: Checkout Repository on Self-Hosted Runner
         uses: actions/checkout@v4
 
-      - name: Debug: Print Current Working Directory
+      - name: Debug Print Current Working Directory
         run: |
           pwd
           ls -F
           ls -F ansible/
-          ls -F helm/myapp/charts/ # Yeni eklenen debug satırı
+          ls -F helm/myapp/charts/
 
       - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
-          pip3 install ansible openshift # openshift kütüphanesi kubernetes.core modülleri için gerekebilir
+          pip3 install ansible openshift
 
       - name: Configure SSH Private Key for Ansible
         run: |
@@ -153,11 +150,6 @@ jobs:
 
       - name: Provide Ansible Vault Password
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
-        # Güvenlik için bu adımın çıktısını loglardan gizlemek istersen:
-        # shell: bash
-        # env:
-        #   ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
-        # run: echo "$ANSIBLE_VAULT_PASSWORD" > vault_pass.txt
 
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests
         run: |
@@ -166,7 +158,7 @@ jobs:
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/myapp/charts" \ # <-- Burası güncellendi
+            --extra-vars "helm_chart_path=../helm/myapp/charts" \
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
             --extra-vars "frontend_image_tag=${{ needs.test-and-build.outputs.image_tag_full_frontend ##*: }}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
@@ -176,5 +168,5 @@ jobs:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
       - name: Clean up Vault Password File
-        if: always() # Her zaman çalışmasını sağlar, hata olsa bile
-        run: rm -f vault_pass.txt # Güvenlik için geçici dosyayı sil
+        if: always()
+        run: rm -f vault_pass.txt
