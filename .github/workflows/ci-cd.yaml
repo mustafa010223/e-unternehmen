@@ -148,16 +148,19 @@ jobs:
       - name: Create Ansible Inventory File on Runner
         run: |
           rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
+          # printf kullanarak daha kontrollü bir şekilde envanter dosyasını yazın.
+          # ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa' veya 'root')
           printf "[k3s_cluster]\n" > ansible/k3s-cluster.ini
           printf "192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n" >> ansible/k3s-cluster.ini
           
+          # Oluşturulan dosyayı doğrulayın (hata ayıklama için)
           echo "--- Content of newly created k3s-cluster.ini ---"
           cat ansible/k3s-cluster.ini
           echo "------------------------------------------------"
           ls -l ansible/k3s-cluster.ini
           chmod 644 ansible/k3s-cluster.ini 
 
-      - name: Verify Inventory Creation & Location # Yeni eklenen doğrulama adımı
+      - name: Verify Inventory Creation & Location 
         run: |
           echo "--- Checking inventory file after creation ---"
           pwd 
@@ -181,12 +184,12 @@ jobs:
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/my-app/" \ 
+            --extra-vars "helm_chart_path=../helm/my-app/" \
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
             --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
             --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \
-            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" 
+            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" # BU SATIRIN SONUNDA KESİNLİKLE BOŞLUK OLMAMALI VE '\' OLMAMALI
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
