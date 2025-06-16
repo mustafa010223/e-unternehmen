@@ -130,7 +130,7 @@ jobs:
       - name: Checkout Repository on Self-Hosted Runner
         uses: actions/checkout@v4
 
-      - name: Debug: Print Current Working Directory
+      - name: Debug Print Current Working Directory
         run: |
           pwd
           ls -F
