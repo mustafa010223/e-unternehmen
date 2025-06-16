@@ -1,4 +1,3 @@
---- # YAML belgesi başlangıcı
 name: CI/CD Pipeline for Microservices
 
 on:
@@ -6,15 +5,14 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_dispatch: # Manuel tetikleme
+  workflow_dispatch: # Manual triggering
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true # Boolean değeri küçük harfle
+  cancel-in-progress: true # Boolean value should be lowercase
 
 env:
-  DOCKERHUB_USERNAME: meyfcsalik
-  # Bu değişkenler artık doğrudan GitHub Actions ortamında kullanılıyor veya Ansible'a aktarılıyor.
+  DOCKERHUB_USERNAME: meyfcsalik # Make sure this is your Docker Hub username
 
 jobs:
   test-and-build:
@@ -25,7 +23,7 @@ jobs:
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
       image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-    services: # Testler için MongoDB servisi
+    services: # MongoDB service for tests
       mongodb_test:
         image: mongo:6.0
         ports: [27017:27017]
@@ -89,16 +87,16 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          # secrets_ignore_patterns yerine extra_args kullanıyoruz
-          extra_args: --regex-exclude 'mongodb:\/\/localhost:27017' # MongoDB URI'sini Regex olarak dışla
-        continue-on-error: true # Boolean değeri küçük harfle
+          # Using 'exclude-patterns' for newer TruffleHog versions
+          exclude-patterns: 'mongodb:\/\/localhost:27017' # Exclude MongoDB URI as Regex
+        continue-on-error: true # Boolean value should be lowercase
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }} # Ensure this secret is set in GitHub
 
       - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push'
@@ -124,7 +122,7 @@ jobs:
     name: Deploy to K3s and Run Security/E2E Tests via Ansible
     needs: test-and-build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted
+    runs-on: self-hosted # Requires a self-hosted runner
     environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
       - name: Checkout Repository on Self-Hosted Runner
@@ -141,17 +139,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
-          pip3 install ansible openshift # kubernetes.core modülleri için gerekebilir
+          pip3 install ansible openshift # Might be needed for kubernetes.core modules
 
       - name: Configure SSH Private Key for Ansible
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
-          chmod 600 ~/.ssh/k8s_cluster_key.pem
+          chmod 600 ~/.ssh/k8s_cluster_key.pem # Ensure this secret is set in GitHub
 
       - name: Provide Ansible Vault Password
-        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
-        # Hassas bilgileri loglardan gizlemek istersen, aşağıdaki yorum satırlarını etkinleştir:
+        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt # Ensure this secret is set in GitHub
+        # If you want to hide sensitive information from logs, uncomment the following:
         # shell: bash
         # env:
         #   ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
@@ -159,11 +157,11 @@ jobs:
 
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests
         run: |
-          # Frontend ve Backend imaj etiketlerini Bash değişkenlerine al
+          # Get Frontend and Backend image tags into Bash variables
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
           BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
 
-          # Bash string manipülasyonu ile sadece etiketi al (ör: "repo/image:tag" -> "tag")
+          # Use Bash string manipulation to get only the tag (e.g., "repo/image:tag" -> "tag")
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
           BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
 
@@ -172,15 +170,15 @@ jobs:
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/myapp/" \ # Helm chart'ın doğru göreceli yolu
+            --extra-vars "helm_chart_path=../helm/myapp/" \ # Correct relative path to Helm chart
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
-            --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \ # Bash değişkeni kullanılıyor
+            --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \ # Using Bash variable
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
-            --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \   # Bash değişkeni kullanılıyor
-            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com"
+            --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \   # Using Bash variable
+            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" # Update with your actual domain
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
       - name: Clean up Vault Password File
-        if: always() # Önceki adımlar başarısız olsa bile çalışmasını sağlar
+        if: always() # Ensures this runs even if previous steps fail
         run: rm -f vault_pass.txt
