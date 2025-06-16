@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 # Enforce least privilege for GITHUB_TOKEN at the workflow level.
 # Default permissions are set to read-only for most scopes,
