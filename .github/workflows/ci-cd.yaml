@@ -135,7 +135,7 @@ jobs:
           pwd
           ls -F
           ls -F ansible/
-          ls -F helm/myapp/charts/
+          ls -F helm/myapp
 
       - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
@@ -172,7 +172,7 @@ jobs:
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/myapp/charts" \ # Helm chart'ın doğru göreceli yolu
+            --extra-vars "helm_chart_path=../helm/myapp/" \ # Helm chart'ın doğru göreceli yolu
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
             --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \ # Bash değişkeni kullanılıyor
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
