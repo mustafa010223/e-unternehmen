@@ -133,7 +133,7 @@ jobs:
           pwd
           ls -F
           ls -F ansible/
-          ls -F helm/myapp # Helm chart'ın ana dizini
+          ls -F helm/my-app # Helm chart'ın ana dizini
 
       - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
