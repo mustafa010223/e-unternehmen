@@ -3,24 +3,47 @@
   hosts: k8s_cluster
   become: true
   vars_files:
-    - secrets.yml  # Ansible Vault ile şifrelenmiş dosya
+    - secrets.yml  # Ansible Vault ile şifrelenmiş dosya
 
   vars:
-    helm_release_name: "prod-app"
-    k8s_namespace: "production"
-    helm_chart_path: "/charts/nginx"
-    enable_selenium_tests: true
+    # Bu değişkenler dışarıdan --extra-vars ile sağlanacak
+    # Varsayılan değerler tanımlanabilir ancak CI/CD'de dışarıdan geleceklerdir.
+    helm_release_name: "my-app" # CI/CD'den gelecek
+    k8s_namespace: "default"    # CI/CD'den gelecek
+    helm_chart_path: "charts/nginx" # Kendi Helm chart'ınızın playbook'a göre yolu (örn: ansible/charts/nginx)
+    frontend_image_repo: "meyfcsalik/frontend" # CI/CD'den gelecek
+    frontend_image_tag: "latest" # CI/CD'den gelecek
+    backend_image_repo: "meyfcsalik/backend" # CI/CD'den gelecek
+    backend_image_tag: "latest" # CI/CD'den gelecek
+    app_domain: "uygulama-adi.example.com" # CI/CD'den gelecek
+    enable_selenium_tests: true # Varsayılan olarak true, gerekirse False yapılabilir
 
   tasks:
+    # YENİ EKLENEN GÖREV: Selenium test betiği ConfigMap'i oluştur
+    - name: Selenium test betiği ConfigMap'i oluştur
+      kubernetes.core.k8s:
+        state: present
+        # selenium-test-configmap.yaml dosyasının bu playbook'a göre yolu
+        definition: "{{ lookup('file', '{{ playbook_dir }}/selenium-test-configmap.yaml') | from_yaml }}"
+      tags: configmap
+
     # 1. Helm Dağıtımı
     - name: Helm chart'ı güncelle
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
-        chart_ref: "{{ helm_chart_path }}"
+        chart_ref: "{{ playbook_dir }}/{{ helm_chart_path }}" # Playbook'un dizinine göre yolu ayarla
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
-        values_files:
-          - "{{ helm_chart_path }}/values-production.yaml"
+        
+        values:
+          frontend:
+            image:
+              repository: "{{ frontend_image_repo }}"
+              tag: "{{ frontend_image_tag }}"
+          backend:
+            image:
+              repository: "{{ backend_image_repo }}"
+              tag: "{{ backend_image_tag }}"
       tags: deploy
 
     # 2. Güvenlik Politikaları
@@ -67,7 +90,7 @@
                     kubernetes.io/metadata.name: monitoring
       tags: security
 
-    # 4. Test Otomasyonu
+    # 4. Test Otomasyonu - Selenium test job'u başlat
     - name: Selenium test job'u başlat
       kubernetes.core.k8s:
         state: present
@@ -75,21 +98,34 @@
           apiVersion: batch/v1
           kind: Job
           metadata:
-            name: "{{ helm_release_name }}-selenium-test"
+            name: "{{ helm_release_name }}-selenium-test-{{ lookup('pipe', 'date +%s') }}" # Unique isim için timestamp
             namespace: "{{ k8s_namespace }}"
           spec:
+            ttlSecondsAfterFinished: 300 # İş bittikten sonra podu 5 dakika sonra sil
             template:
               spec:
                 containers:
                 - name: selenium-runner
-                  image: selenium/standalone-chrome
-                  command: ["/bin/sh", "-c"]
-                  args: 
-                    - "curl -LO https://test-scripts.example.com/suite.sh;
-                       chmod +x suite.sh;
-                       ./suite.sh {{ helm_release_name }}.svc.cluster.local"
+                  image: python:3.9-slim # Veya kendi test imajınız: meyfcsalik/selenium-test-runner (Bu imajda Selenium ve gerekli driver'lar yüklü olmalı)
+                  command: ["python3"]
+                  args:
+                    - "/app/run_tests.py"
+                    - "--env"
+                    - "{{ lookup('env', 'DEPLOY_ENV_NAME') }}" # CI/CD'den gelen ortam adı
+                    - "--app-url"
+                    - "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local" # Uygulamanın K8s cluster içi servisi
+                  env: # Selenium Grid adresini burada belirtelim
+                    - name: GRID_URL
+                      value: "http://selenium-grid:4444/wd/hub" # K8s içinde Selenium Grid servisi varsa
+                  volumeMounts:
+                    - name: test-scripts-volume
+                      mountPath: /app
+                volumes:
+                  - name: test-scripts-volume
+                    configMap:
+                      name: selenium-test-script # Selenium test betiğinizi içeren ConfigMap
                 restartPolicy: Never
-            backoffLimit: 0
+            backoffLimit: 0 # Job'un kaç kez yeniden deneneceği, 0 başarısız olunca durur
       when: enable_selenium_tests
       tags: testing
 
@@ -97,22 +133,23 @@
     - name: Vault şifresini otomatik döndür
       ansible.builtin.command: >
         ansible-vault rekey secrets.yml
-        --new-vault-password-file /etc/ansible/vault_pass_new
+        --new-vault-password-file {{ playbook_dir }}/vault_pass_new.txt # Yeni şifre dosyasının yolu
       args:
-        creates: /etc/ansible/vault_pass_new
-      run_once: true
+        creates: {{ playbook_dir }}/vault_pass_new.txt # Bu dosya oluşursa komutu tekrar çalıştırma
+      run_once: true # Sadece bir kez çalıştır
       tags: vault
 
   post_tasks:
-    - name: Dağıtım başarısını doğrula
+    - name: Dağıtım başarısını doğrula (Podları kontrol et)
       kubernetes.core.k8s_info:
         kind: Pod
         namespace: "{{ k8s_namespace }}"
         label_selectors:
           - app.kubernetes.io/instance={{ helm_release_name }}
       register: deployment_pods
+      failed_when: deployment_pods.resources | length == 0 # En az bir pod bulunamazsa başarısız say
 
-    - name: Sağlık kontrolü
+    - name: Uygulama sağlık kontrolü
       uri:
         url: "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local/health"
         return_content: yes
@@ -120,4 +157,3 @@
       until: health_check.status == 200
       retries: 10
       delay: 5
-...

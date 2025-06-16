@@ -43,8 +43,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: |
             frontend/package-lock.json
-            backend/package-lock.json
-
+            backend/package-lock.lock
+      
       - name: Set Output Variables (Commit SHA)
         id: vars
         run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
@@ -91,8 +91,8 @@ jobs:
           base: HEAD~1
           head: HEAD
           secrets_ignore_patterns: |
-            - 'mongodb:\/\/localhost:27017' # Bu deseni yoksay (bunu koruyoruz)
-        continue-on-error: true # BU SATIR EKLENDİ: Hata durumunda pipeline'ın devam etmesini sağlar
+            - 'mongodb:\/\/localhost:27017'
+        continue-on-error: true
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
@@ -128,37 +128,66 @@ jobs:
     runs-on: self-hosted
     environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
+      - name: Checkout Repository for Self-Hosted Runner
+        uses: actions/checkout@v4 # Kendi sunucunuzda da repoyu çekmeniz gerekebilir
+
+      - name: Set up Python on Self-Hosted Runner
+        run: sudo apt-get update && sudo apt-get install -y python3 python3-pip
+
+      - name: Install Ansible on Self-Hosted Runner
+        run: pip3 install ansible
+
+      # Ansible playbook'unuzu çalıştırmak için bir adım ekleyin
+      - name: Run Ansible Playbook for K3s Infrastructure (Optional)
+        run: |
+          # Eğer vault kullanıyorsanız, vault şifresini güvenli bir şekilde alın
+          # echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+          
+          # k3s-cluster.ini dosyasını kullanan Ansible playbook'unuzu çalıştırın
+          # Bu adım, K3s kurulumu veya yapılandırması gibi altyapı işleri içindir.
+          ansible-playbook -i k3s-cluster.ini deploy.yaml -u mustafa --private-key /home/mustafa/.ssh/k8s_cluster_key.pem
+          # Eğer vault kullanıyorsanız:
+          # ansible-playbook -i k3s-cluster.ini deploy.yaml -u mustafa --vault-password-file vault_pass.txt --private-key /home/mustafa/.ssh/k8s_cluster_key.pem
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False' # İlk bağlantıda host anahtarı kontrolünü devre dışı bırakır
+
       - name: Deploy via SSH and Helm
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.K3S_HOST_IP }}
-          username: ${{ secrets.K3S_USER }}
-          key: ${{ secrets.K3S_SSH_PRIVATE_KEY }}
-          script: |
-            FRONTEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-            BACKEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
-            DEPLOY_ENV_NAME="${{ needs.test-and-build.outputs.deploy_env }}"
-            DEPLOY_NAMESPACE="default"
+        # Bu adım mevcut Helm dağıtımınızı yapar
+        # K3s sunucusuna bağlanmak için appleboy/ssh-action kullanmanıza gerek kalmayabilir
+        # çünkü zaten self-hosted runner üzerinde çalışıyorsunuz ve Ansible adımı K3s'e erişiyor.
+        # Ancak, Helm komutlarını doğrudan self-hosted runner'da çalıştırmak için
+        # Kubernetes yapılandırmasının (kubeconfig) doğru ayarlandığından emin olmalısınız.
+        # Eğer K3s sunucunuz aynı self-hosted runner ise, bu daha kolaydır.
+        run: |
+          FRONTEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
+          BACKEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
+          DEPLOY_ENV_NAME="${{ needs.test-and-build.outputs.deploy_env }}"
+          DEPLOY_NAMESPACE="default"
 
-            echo "Deploying Frontend: $FRONTEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
-            echo "Deploying Backend: $BACKEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
-            echo "Deploying environment: $DEPLOY_ENV_NAME"
+          echo "Deploying Frontend: $FRONTEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
+          echo "Deploying Backend: $BACKEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
+          echo "Deploying environment: $DEPLOY_ENV_NAME"
 
-            HELM_VALUES_FILE="${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }}/values-${DEPLOY_ENV_NAME}.yaml"
+          # K3S_SERVER_PROJECT_PATH, self-hosted runner üzerindeki dizin yapınızla uyumlu olmalı
+          HELM_VALUES_FILE="${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }}/values-${DEPLOY_ENV_NAME}.yaml"
 
-            helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} \
-              --namespace "$DEPLOY_NAMESPACE" \
-              -f "$HELM_VALUES_FILE" \
-              --set frontend.image.repository="${{ env.DOCKERHUB_USERNAME }}/frontend" \
-              --set frontend.image.tag="${FRONTEND_IMAGE_FULL_TAG##*:}" \
-              --set backend.image.repository="${{ env.DOCKERHUB_USERNAME }}/backend" \
-              --set backend.image.tag="${BACKEND_IMAGE_FULL_TAG##*:}" \
-              --wait
+          # Helm komutunu doğrudan self-hosted runner üzerinde çalıştırın
+          # Bu, appleboy/ssh-action adımına gerek kalmadan doğrudan K3s ile iletişim kurabilir
+          # Eğer self-hosted runner K3s sunucusu değilse ve başka bir sunucuya bağlanması gerekiyorsa,
+          # o zaman appleboy/ssh-action'a geri dönmeliyiz.
+          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} \
+            --namespace "$DEPLOY_NAMESPACE" \
+            -f "$HELM_VALUES_FILE" \
+            --set frontend.image.repository="${{ env.DOCKERHUB_USERNAME }}/frontend" \
+            --set frontend.image.tag="${FRONTEND_IMAGE_FULL_TAG##*:}" \
+            --set backend.image.repository="${{ env.DOCKERHUB_USERNAME }}/backend" \
+            --set backend.image.tag="${BACKEND_IMAGE_FULL_TAG##*:}" \
+            --wait
 
-            echo "Helm deployment initiated. Checking rollout status..."
+          echo "Helm deployment initiated. Checking rollout status..."
 
-            kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-frontend -n "$DEPLOY_NAMESPACE"
-            kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-backend -n "$DEPLOY_NAMESPACE"
+          kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-frontend -n "$DEPLOY_NAMESPACE"
+          kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-backend -n "$DEPLOY_NAMESPACE"
 
-            echo "Deployment rollout checks complete."
-            echo "Application should now be updated."
+          echo "Deployment rollout checks complete."
+          echo "Application should now be updated."
