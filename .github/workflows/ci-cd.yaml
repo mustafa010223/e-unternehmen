@@ -1,3 +1,4 @@
+--- # YAML belgesi başlangıcı
 name: CI/CD Pipeline for Microservices
 
 on:
@@ -9,7 +10,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: true # Boolean değeri küçük harfle
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik # Kendi Docker Hub kullanıcı adınızı buraya girin
@@ -87,14 +88,15 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-        continue-on-error: true 
+          extra_args: --regex-exclude 'mongodb:\/\/localhost:27017' # MongoDB URI'sini Regex olarak dışla
+        continue-on-error: true # Boolean değeri küçük harfle
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }} 
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push'
@@ -131,7 +133,7 @@ jobs:
           pwd
           ls -F
           ls -F ansible/
-          ls -F helm/my-app 
+          ls -F helm/myapp # Helm chart'ın ana dizini
 
       - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
@@ -147,11 +149,17 @@ jobs:
 
       - name: Create Ansible Inventory File on Runner
         run: |
+          mkdir -p ansible # Eğer silinmişse tekrar oluştur
           rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
+          
           # printf kullanarak daha kontrollü bir şekilde envanter dosyasını yazın.
-          # ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa' veya 'root')
-          printf "[k3s_cluster]\n" > ansible/k3s-cluster.ini
-          printf "192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n" >> ansible/k3s-cluster.ini
+          # K8s küme master'ı için tek host'u tanımlayın.
+          # ansible_host IP'sini ve ansible_user'ı doğru girin.
+          # Buradaki mustafa kullanıcısı, SSH ile bağlanılan makinedeki kullanıcı olmalı.
+          printf "[k8s_cluster]\n" > ansible/k3s-cluster.ini
+          printf "master ansible_host=192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n" >> ansible/k3s-cluster.ini
+          # Eğer runner aynı makinedeyse ve SSH kullanmak istemiyorsanız, alttaki satırı kullanın:
+          # printf "master ansible_connection=local\n" >> ansible/k3s-cluster.ini
           
           # Oluşturulan dosyayı doğrulayın (hata ayıklama için)
           echo "--- Content of newly created k3s-cluster.ini ---"
@@ -160,22 +168,31 @@ jobs:
           ls -l ansible/k3s-cluster.ini
           chmod 644 ansible/k3s-cluster.ini 
 
-      - name: Verify Inventory Creation & Location 
-        run: |
-          echo "--- Checking inventory file after creation ---"
-          pwd 
-          ls -l ansible/k3s-cluster.ini 
-          cat ansible/k3s-cluster.ini 
-          echo "----------------------------------------------"
-
       - name: Provide Ansible Vault Password
-        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt 
+        run: |
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt 
 
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests
+        shell: bash
         run: |
+          # --- Ansible Envanter ve Bağlantı Hata Ayıklama Başlangıcı ---
+          echo "--- Debugging Ansible Inventory and Connectivity ---"
+          which ansible # Ansible'ın nerede olduğunu göster
+          ansible --version # Ansible sürümünü göster
+          echo "Contents of ansible/k3s-cluster.ini:"
+          cat ansible/k3s-cluster.ini # Envanter dosyasının içeriğini göster
+          echo "Ansible Inventory List (should show k8s_cluster and master host):"
+          ansible-inventory -i ansible/k3s-cluster.ini --list # Ansible'ın envanteri nasıl gördüğünü göster
+          echo "Testing SSH connectivity to master (192.168.0.60):"
+          # Tek makine olduğu için, master'ın IP'sini doğrudan kullanıyoruz
+          ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 'echo Connected && exit' || echo "SSH connection to 192.168.0.60 failed."
+          echo "--- End Debugging Ansible Inventory and Connectivity ---"
+
+          # Frontend ve Backend imaj etiketlerini Bash değişkenlerine al
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
           BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" 
 
+          # Bash string manipülasyonu ile sadece etiketi al (ör: "repo/image:tag" -> "tag")
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
           BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
 
@@ -184,12 +201,13 @@ jobs:
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/my-app/" \
+            --extra-vars "helm_chart_path=../helm/myapp" \ # Helm chart'ın doğru göreceli yolu
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
             --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
             --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \
-            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" # BU SATIRIN SONUNDA KESİNLİKLE BOŞLUK OLMAMALI VE '\' OLMAMALI
+            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" \
+            --extra-vars "deploy_env_name=${{ needs.test-and-build.outputs.deploy_env }}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
