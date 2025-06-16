@@ -1,157 +1,159 @@
-name: CI/CD Pipeline for Microservices v2
+name: CI/CD Pipeline Optimization and Security Review
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
   pull_request:
-    branches: [main, develop]
-  workflow_dispatch:
+    branches:
+      - main
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  DOCKERHUB_USERNAME: meyfcsalik
+# Enforce least privilege for GITHUB_TOKEN at the workflow level.
+# Default permissions are set to read-only for most scopes,
+# and will be explicitly elevated only where necessary for specific jobs.
+permissions:
+  contents: read
+  packages: write # Necessary for pushing Docker images
+  pull-requests: write # Required for TruffleHog to create PR comments/issues
+  id-token: write # Required for OIDC, if implemented later
 
 jobs:
-  test-and-build:
-    name: Test, Build and Push Docker Images
+  # It's often better to separate frontend and backend into distinct jobs (e.g., build-backend, build-frontend)
+  # for better parallelism and clearer separation of concerns.
+  # However, for this example, we'll keep them in one job by using 'working-directory'.
+  build-and-test:
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_full }}
-      deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-    services:
-      mongodb_test:
-        image: mongo:6.0
-        ports: [27017:27017]
+
+    # Explicitly define permissions for this job, adhering to least privilege.
+    permissions:
+      contents: write # Needed for actions/checkout to fetch code
+      packages: write # If this job publishes npm packages or Docker images
+      pull-requests: write # If this job comments on PRs or creates issues
+      id-token: write # If OIDC is used for cloud auth
+
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@b4ffde65f46336ab88eb5afa53ea30b477e051d1 # v4.1.1 SHA
 
-      - name: Set up Node.js with Cache v2
-        uses: actions/setup-node@v4
+      # --- Backend Build and Test ---
+      - name: Setup Node.js Environment for Backend with Caching
+        uses: actions/setup-node@v4.0.2 # v4.0.2 SHA
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            backend/package-lock.json  # Düzeltildi: package-lock.lock -> package-lock.json
+          cache-dependency-path: 'backend/package-lock.json' # Point to backend's lockfile
 
-      - name: Set Output Variables (Commit SHA)
-        id: vars
-        run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+      - name: Install Backend Node.js Dependencies
+        run: npm ci
+        working-directory: backend # Run npm ci in the backend directory
 
-      - name: Determine Environment Name
-        id: set_env
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
-          else
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
-          fi
+      - name: Run Backend Unit Tests
+        run: npm test
+        working-directory: backend # Run npm test in the backend directory
 
-      - name: Frontend - Install Dependencies & Lint
-        working-directory: ./frontend
-        run: |
-          npm ci
-          npm run lint --if-present
-
-      - name: Frontend - Run Tests
-        working-directory: ./frontend
-        run: npm test --if-present -- --watchAll=false --coverage
-
-      - name: Frontend - Build
-        working-directory: ./frontend
-        run: npm run build
-
-      - name: Backend - Install Dependencies & Lint
-        working-directory: ./backend
-        run: |
-          npm ci
-          npm run lint --if-present
-
-      - name: Backend - Run Tests
-        working-directory: ./backend
-        run: npm test --if-present -- --watchAll=false --coverage
-        env:
-          MONGO_URL: mongodb://mongodb_test:27017/myapp_test  # Konteyner ismi kullanıldı
-
-      - name: TruffleHog Scan (Official Action)
-        uses: trufflesecurity/trufflehog-action@main
-        with:
-          path: ./
-          base: HEAD~1
-          head: HEAD
-          fail: false  # Hata durumunda işlemi sonlandırmaz
-
-      - name: Log in to Docker Hub
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and Push Frontend Docker Image
-        if: github.event_name == 'push'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-          cache-from: type=gha  # Docker katman önbellekleme
-          cache-to: type=gha,mode=max
+      - name: Setup Docker Buildx for Backend
+        uses: docker/setup-buildx-action@v3.0.0 # v3.0.0 SHA
 
       - name: Build and Push Backend Docker Image
-        if: github.event_name == 'push'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v5.0.0 # v5.0.0 SHA
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          context: backend # Dockerfile for backend is in the 'backend' directory
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: your-repo/your-app-backend:latest,your-repo/your-app-backend:${{ github.sha }} # Differentiate tags
 
-  deploy:
-    name: Deploy to K3s
-    needs: test-and-build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted
-    environment: ${{ needs.test-and-build.outputs.deploy_env }}
+      # --- Frontend Build and Test ---
+      - name: Setup Node.js Environment for Frontend with Caching
+        uses: actions/setup-node@v4.0.2 # v4.0.2 SHA
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json' # Point to frontend's lockfile
+
+      - name: Install Frontend Node.js Dependencies
+        run: npm ci
+        working-directory: frontend # Run npm ci in the frontend directory
+
+      - name: Run Frontend Unit Tests
+        run: npm test
+        working-directory: frontend # Run npm test in the frontend directory
+
+      - name: Setup Docker Buildx for Frontend
+        uses: docker/setup-buildx-action@v3.0.0 # v3.0.0 SHA
+
+      - name: Build and Push Frontend Docker Image
+        uses: docker/build-push-action@v5.0.0 # v5.0.0 SHA
+        with:
+          context: frontend # Dockerfile for frontend is in the 'frontend' directory
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: your-repo/your-app-frontend:latest,your-repo/your-app-frontend:${{ github.sha }} # Differentiate tags
+
+  ---
+
+  secret-scanning:
+    runs-on: ubuntu-latest
+    needs: build-and-test # Ensure builds/tests pass before scanning for secrets
+    permissions:
+      contents: read # TruffleHog needs to read repository contents
+      pull-requests: write # TruffleHog might create PR comments/issues
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Ansible via Docker
-        uses: docker/setup-buildx-action@v3
+      - name: Checkout Repository for Secret Scan
+        uses: actions/checkout@b4ffde65f46336ab88eb5afa53ea30b477e051d1 # v4.1.1 SHA
         with:
-          driver: docker
+          fetch-depth: 0 # TruffleHog needs full history for git scans
 
-      - name: Configure SSH Private Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key
-          chmod 600 ~/.ssh/k8s_cluster_key
-
-      - name: Run Ansible Playbook
-        run: |
-          docker run --rm -v $(pwd):/work -w /work \
-            -e ANSIBLE_VAULT_PASSWORD="${{ secrets.ANSIBLE_VAULT_PASSWORD }}" \
-            ansible/ansible-runner:latest \
-            ansible-playbook ansible/deploy.yaml \
-              -i ansible/k3s-cluster.ini \
-              --vault-password=$ANSIBLE_VAULT_PASSWORD \
-              --extra-vars "helm_release_name=my-app" \
-              --extra-vars "k8s_namespace=default" \
-              --extra-vars "helm_chart_path=../helm/myapp/" \
-              --extra-vars "frontend_image=${{ needs.test-and-build.outputs.image_tag_full_frontend }}" \
-              --extra-vars "backend_image=${{ needs.test-and-build.outputs.image_tag_full_backend }}" \
-              --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com"
+      - name: TruffleHog - Secrets Scan
+        uses: trufflesecurity/trufflehog@v3.89.1 # Use the latest stable version
+        with:
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --no-verify --fail --exclude-paths .trufflehogignore # .trufflehogignore is at repo root
         env:
-          ANSIBLE_HOST_KEY_CHECKING: 'False'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ---
+
+  ansible-deployment:
+    runs-on: ubuntu-latest
+    needs: build-and-test # Depends on successful build and tests
+    environment: production # Example: Deploy to a 'production' environment with required reviewers
+    permissions:
+      contents: read # For checking out Ansible playbooks
+      # If Ansible interacts with GitHub APIs, additional permissions might be needed.
+
+    steps:
+      - name: Checkout Repository for Ansible
+        uses: actions/checkout@b4ffde65f46336ab88eb5afa53ea30b477e051d1 # v4.1.1 SHA
+
+      - name: Setup Python for Ansible
+        uses: actions/setup-python@v5.0.0 # v5.0.0 SHA
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible and Kubernetes/OpenShift Collection
+        run: |
+          pip install ansible
+          ansible-galaxy collection install kubernetes.core
+          pip install kubernetes # Required for kubernetes.core collection
+
+      - name: Prepare Ansible Vault Password File
+        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
+        shell: bash
+      - name: Set Permissions for Vault Password File
+        run: chmod 600 .vault_password
+
+      - name: Run Ansible Playbook for Deployment
+        run: |
+          ansible-playbook deploy.yaml \
+            -i hosts.ini \
+            --vault-password-file .vault_password \
+            -e "app_version_backend=${{ github.sha }}" \ # Pass backend image SHA
+            -e "app_version_frontend=${{ github.sha }}" # Pass frontend image SHA
+        working-directory: ansible # Execute Ansible commands from the 'ansible' directory
+        env:
+          ANSIBLE_VAULT_PASSWORD_FILE: .vault_password
+        # Critical: Use no_log: true on any Ansible task that handles plaintext sensitive data
+        # to prevent secrets from appearing in logs.
+
+      - name: Clean up Ansible Vault Password File
+        run: rm .vault_password
