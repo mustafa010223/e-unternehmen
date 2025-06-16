@@ -1,3 +1,4 @@
+---
 name: CI/CD Pipeline for Microservices
 
 on:
@@ -13,6 +14,9 @@ concurrency:
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik
+  # K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # Artık doğrudan self-hosted runner üzerinde çalışacağımız için bu tam yola ihtiyacımız kalmayacak.
+  # HELM_CHART_PATH: helm/myapp # Bu değişkeni Helm chart'ın kendi yolundan alacağız
+  # HELM_RELEASE_NAME: myapp # Ansible playbook içinde tanımlanacak
 
 jobs:
   test-and-build:
@@ -22,7 +26,7 @@ jobs:
       image_tag: ${{ steps.vars.outputs.sha_full }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_env }}-${{ steps.vars.outputs.sha_full }}
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
     services:
       mongodb_test:
         image: mongo:6.0
@@ -133,12 +137,13 @@ jobs:
           pwd
           ls -F
           ls -F ansible/
+          ls -F helm/myapp/charts/ # Yeni eklenen debug satırı
 
       - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
-          pip3 install ansible openshift
+          pip3 install ansible openshift # openshift kütüphanesi kubernetes.core modülleri için gerekebilir
 
       - name: Configure SSH Private Key for Ansible
         run: |
@@ -148,15 +153,20 @@ jobs:
 
       - name: Provide Ansible Vault Password
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+        # Güvenlik için bu adımın çıktısını loglardan gizlemek istersen:
+        # shell: bash
+        # env:
+        #   ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        # run: echo "$ANSIBLE_VAULT_PASSWORD" > vault_pass.txt
 
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests
         run: |
           ansible-playbook ansible/deploy.yaml \
             -i ansible/k3s-cluster.ini \
             --vault-password-file vault_pass.txt \
-            --extra-vars "helm_release_name=my-app" \ # Changed from ${{ env.HELM_RELEASE_NAME }} as it was not set for deploy job
+            --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=charts/nginx" \ # Path relative to ansible/deploy.yaml location
+            --extra-vars "helm_chart_path=../helm/myapp/charts" \ # <-- Burası güncellendi
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
             --extra-vars "frontend_image_tag=${{ needs.test-and-build.outputs.image_tag_full_frontend ##*: }}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
@@ -166,5 +176,5 @@ jobs:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
       - name: Clean up Vault Password File
-        if: always()
-        run: rm -f vault_pass.txt
+        if: always() # Her zaman çalışmasını sağlar, hata olsa bile
+        run: rm -f vault_pass.txt # Güvenlik için geçici dosyayı sil
