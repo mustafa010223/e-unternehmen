@@ -13,9 +13,6 @@ concurrency:
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik
-  K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen
-  HELM_CHART_PATH: helm/myapp
-  HELM_RELEASE_NAME: myapp
 
 jobs:
   test-and-build:
@@ -25,7 +22,7 @@ jobs:
       image_tag: ${{ steps.vars.outputs.sha_full }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_env }}-${{ steps.vars.outputs.sha_full }}
     services:
       mongodb_test:
         image: mongo:6.0
@@ -122,72 +119,52 @@ jobs:
           no-cache: true
 
   deploy:
-    name: Deploy to K3s
+    name: Deploy to K3s and Run Security/E2E Tests via Ansible
     needs: test-and-build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: self-hosted
     environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Checkout Repository for Self-Hosted Runner
-        uses: actions/checkout@v4 # Kendi sunucunuzda da repoyu çekmeniz gerekebilir
+      - name: Checkout Repository on Self-Hosted Runner
+        uses: actions/checkout@v4
 
-      - name: Set up Python on Self-Hosted Runner
-        run: sudo apt-get update && sudo apt-get install -y python3 python3-pip
-
-      - name: Install Ansible on Self-Hosted Runner
-        run: pip3 install ansible
-
-      # Ansible playbook'unuzu çalıştırmak için bir adım ekleyin
-      - name: Run Ansible Playbook for K3s Infrastructure (Optional)
+      - name: Debug: Print Current Working Directory
         run: |
-          # Eğer vault kullanıyorsanız, vault şifresini güvenli bir şekilde alın
-          # echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
-          
-          # k3s-cluster.ini dosyasını kullanan Ansible playbook'unuzu çalıştırın
-          # Bu adım, K3s kurulumu veya yapılandırması gibi altyapı işleri içindir.
-          ansible-playbook -i k3s-cluster.ini deploy.yaml -u mustafa --private-key /home/mustafa/.ssh/k8s_cluster_key.pem
-          # Eğer vault kullanıyorsanız:
-          # ansible-playbook -i k3s-cluster.ini deploy.yaml -u mustafa --vault-password-file vault_pass.txt --private-key /home/mustafa/.ssh/k8s_cluster_key.pem
+          pwd
+          ls -F
+          ls -F ansible/
+
+      - name: Set up Python and Install Ansible on Self-Hosted Runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip
+          pip3 install ansible openshift
+
+      - name: Configure SSH Private Key for Ansible
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
+          chmod 600 ~/.ssh/k8s_cluster_key.pem
+
+      - name: Provide Ansible Vault Password
+        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+
+      - name: Run Ansible Playbook for Deployment, Security and E2E Tests
+        run: |
+          ansible-playbook ansible/deploy.yaml \
+            -i ansible/k3s-cluster.ini \
+            --vault-password-file vault_pass.txt \
+            --extra-vars "helm_release_name=my-app" \ # Changed from ${{ env.HELM_RELEASE_NAME }} as it was not set for deploy job
+            --extra-vars "k8s_namespace=default" \
+            --extra-vars "helm_chart_path=charts/nginx" \ # Path relative to ansible/deploy.yaml location
+            --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
+            --extra-vars "frontend_image_tag=${{ needs.test-and-build.outputs.image_tag_full_frontend ##*: }}" \
+            --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
+            --extra-vars "backend_image_tag=${{ needs.test-and-build.outputs.image_tag_full_backend ##*: }}" \
+            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com"
         env:
-          ANSIBLE_HOST_KEY_CHECKING: 'False' # İlk bağlantıda host anahtarı kontrolünü devre dışı bırakır
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
 
-      - name: Deploy via SSH and Helm
-        # Bu adım mevcut Helm dağıtımınızı yapar
-        # K3s sunucusuna bağlanmak için appleboy/ssh-action kullanmanıza gerek kalmayabilir
-        # çünkü zaten self-hosted runner üzerinde çalışıyorsunuz ve Ansible adımı K3s'e erişiyor.
-        # Ancak, Helm komutlarını doğrudan self-hosted runner'da çalıştırmak için
-        # Kubernetes yapılandırmasının (kubeconfig) doğru ayarlandığından emin olmalısınız.
-        # Eğer K3s sunucunuz aynı self-hosted runner ise, bu daha kolaydır.
-        run: |
-          FRONTEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-          BACKEND_IMAGE_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
-          DEPLOY_ENV_NAME="${{ needs.test-and-build.outputs.deploy_env }}"
-          DEPLOY_NAMESPACE="default"
-
-          echo "Deploying Frontend: $FRONTEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
-          echo "Deploying Backend: $BACKEND_IMAGE_FULL_TAG to namespace $DEPLOY_NAMESPACE"
-          echo "Deploying environment: $DEPLOY_ENV_NAME"
-
-          # K3S_SERVER_PROJECT_PATH, self-hosted runner üzerindeki dizin yapınızla uyumlu olmalı
-          HELM_VALUES_FILE="${{ env.K3S_SERVER_PROJECT_PATH }}/${{ env.HELM_CHART_PATH }}/values-${DEPLOY_ENV_NAME}.yaml"
-
-          # Helm komutunu doğrudan self-hosted runner üzerinde çalıştırın
-          # Bu, appleboy/ssh-action adımına gerek kalmadan doğrudan K3s ile iletişim kurabilir
-          # Eğer self-hosted runner K3s sunucusu değilse ve başka bir sunucuya bağlanması gerekiyorsa,
-          # o zaman appleboy/ssh-action'a geri dönmeliyiz.
-          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} \
-            --namespace "$DEPLOY_NAMESPACE" \
-            -f "$HELM_VALUES_FILE" \
-            --set frontend.image.repository="${{ env.DOCKERHUB_USERNAME }}/frontend" \
-            --set frontend.image.tag="${FRONTEND_IMAGE_FULL_TAG##*:}" \
-            --set backend.image.repository="${{ env.DOCKERHUB_USERNAME }}/backend" \
-            --set backend.image.tag="${BACKEND_IMAGE_FULL_TAG##*:}" \
-            --wait
-
-          echo "Helm deployment initiated. Checking rollout status..."
-
-          kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-frontend -n "$DEPLOY_NAMESPACE"
-          kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }}-backend -n "$DEPLOY_NAMESPACE"
-
-          echo "Deployment rollout checks complete."
-          echo "Application should now be updated."
+      - name: Clean up Vault Password File
+        if: always()
+        run: rm -f vault_pass.txt
