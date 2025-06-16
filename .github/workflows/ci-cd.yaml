@@ -1,4 +1,4 @@
----
+--- # YAML belgesi başlangıcı
 name: CI/CD Pipeline for Microservices
 
 on:
@@ -6,17 +6,15 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_dispatch:
+  workflow_dispatch: # Manuel tetikleme
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: true # Boolean değeri küçük harfle
 
 env:
   DOCKERHUB_USERNAME: meyfcsalik
-  # K3S_SERVER_PROJECT_PATH: /home/mustafa/e-unternehmen # Artık doğrudan self-hosted runner üzerinde çalışacağımız için bu tam yola ihtiyacımız kalmayacak.
-  # HELM_CHART_PATH: helm/myapp # Bu değişkeni Helm chart'ın kendi yolundan alacağız
-  # HELM_RELEASE_NAME: myapp # Ansible playbook içinde tanımlanacak
+  # Bu değişkenler artık doğrudan GitHub Actions ortamında kullanılıyor veya Ansible'a aktarılıyor.
 
 jobs:
   test-and-build:
@@ -27,7 +25,7 @@ jobs:
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
       image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-    services:
+    services: # Testler için MongoDB servisi
       mongodb_test:
         image: mongo:6.0
         ports: [27017:27017]
@@ -45,7 +43,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             backend/package-lock.lock
-        
+      
       - name: Set Output Variables (Commit SHA)
         id: vars
         run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
@@ -91,9 +89,9 @@ jobs:
           path: ./
           base: HEAD~1
           head: HEAD
-          secrets_ignore_patterns: |
-            - 'mongodb:\/\/localhost:27017'
-        continue-on-error: true
+          # secrets_ignore_patterns yerine extra_args kullanıyoruz
+          extra_args: --regex-exclude 'mongodb:\/\/localhost:27017' # MongoDB URI'sini Regex olarak dışla
+        continue-on-error: true # Boolean değeri küçük harfle
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
@@ -132,7 +130,7 @@ jobs:
       - name: Checkout Repository on Self-Hosted Runner
         uses: actions/checkout@v4
 
-      - name: "Debug: Print Current Working Directory"
+      - name: Debug: Print Current Working Directory
         run: |
           pwd
           ls -F
@@ -143,7 +141,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
-          pip3 install ansible openshift # openshift kütüphanesi kubernetes.core modülleri için gerekebilir
+          pip3 install ansible openshift # kubernetes.core modülleri için gerekebilir
 
       - name: Configure SSH Private Key for Ansible
         run: |
@@ -153,7 +151,7 @@ jobs:
 
       - name: Provide Ansible Vault Password
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
-        # If you want to hide the output from logs:
+        # Hassas bilgileri loglardan gizlemek istersen, aşağıdaki yorum satırlarını etkinleştir:
         # shell: bash
         # env:
         #   ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
@@ -161,11 +159,11 @@ jobs:
 
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests
         run: |
-          # Frontend ve Backend imaj etiketlerini burada ayrıştırıyoruz
+          # Frontend ve Backend imaj etiketlerini Bash değişkenlerine al
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
           BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
 
-          # Bash string manipülasyonu ile sadece etiketi al
+          # Bash string manipülasyonu ile sadece etiketi al (ör: "repo/image:tag" -> "tag")
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
           BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
 
@@ -174,15 +172,15 @@ jobs:
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
             --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/myapp/charts" \
+            --extra-vars "helm_chart_path=../helm/myapp/charts" \ # Helm chart'ın doğru göreceli yolu
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
-            --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
+            --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \ # Bash değişkeni kullanılıyor
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
-            --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \
+            --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \   # Bash değişkeni kullanılıyor
             --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com"
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
       - name: Clean up Vault Password File
-        if: always()   # Ensures this runs even if previous steps fail
+        if: always() # Önceki adımlar başarısız olsa bile çalışmasını sağlar
         run: rm -f vault_pass.txt
