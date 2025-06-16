@@ -1,18 +1,18 @@
-name: CI/CD Pipeline for Microservices
+name: CI/CD Pipeline for Microservices v2
 
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_dispatch: # Manuel tetikleme
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  DOCKERHUB_USERNAME: meyfcsalik # Kendi Docker Hub kullanıcı adınızı buraya girin
+  DOCKERHUB_USERNAME: meyfcsalik
 
 jobs:
   test-and-build:
@@ -23,7 +23,7 @@ jobs:
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
       image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-    services: # Testler için MongoDB servisi
+    services:
       mongodb_test:
         image: mongo:6.0
         ports: [27017:27017]
@@ -40,8 +40,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: |
             frontend/package-lock.json
-            backend/package-lock.lock
-      
+            backend/package-lock.json  # Düzeltildi: package-lock.lock -> package-lock.json
+
       - name: Set Output Variables (Commit SHA)
         id: vars
         run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
@@ -79,24 +79,22 @@ jobs:
         working-directory: ./backend
         run: npm test --if-present -- --watchAll=false --coverage
         env:
-          MONGO_URL: mongodb://localhost:27017/myapp_test
+          MONGO_URL: mongodb://mongodb_test:27017/myapp_test  # Konteyner ismi kullanıldı
 
-      - name: Scan for secrets with TruffleHog
-        uses: trufflesecurity/trufflehog@main
+      - name: TruffleHog Scan (Official Action)
+        uses: trufflesecurity/trufflehog-action@main
         with:
           path: ./
           base: HEAD~1
           head: HEAD
-          # 'extra_args' veya 'exclude-patterns' gibi parametreler bu aksiyon sürümü için çalışmıyor gibi görünüyor.
-          # Sadece 'continue-on-error: true' kullanarak hatayı yoksayacağız.
-        continue-on-error: true # Bu adım hata verse bile pipeline'ın devam etmesini sağlar.
+          fail: false  # Hata durumunda işlemi sonlandırmaz
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }} # GitHub Sırları'nda tanımlanmalı
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push'
@@ -106,7 +104,8 @@ jobs:
           file: ./frontend/Dockerfile
           push: true
           tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-          no-cache: true
+          cache-from: type=gha  # Docker katman önbellekleme
+          cache-to: type=gha,mode=max
 
       - name: Build and Push Backend Docker Image
         if: github.event_name == 'push'
@@ -116,69 +115,43 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-          no-cache: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy to K3s and Run Security/E2E Tests via Ansible
+    name: Deploy to K3s
     needs: test-and-build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: self-hosted # Kendinden barındırılan koşucu gereklidir
+    runs-on: self-hosted
     environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Checkout Repository on Self-Hosted Runner
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Debug Print Current Working Directory
-        run: |
-          pwd
-          ls -F
-          ls -F ansible/
-          ls -F helm/myapp
+      - name: Set up Ansible via Docker
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
 
-      - name: Set up Python and Install Ansible on Self-Hosted Runner
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3 python3-pip
-          pip3 install ansible openshift # kubernetes.core modülleri için gerekebilir
-
-      - name: Configure SSH Private Key for Ansible
+      - name: Configure SSH Private Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
-          chmod 600 ~/.ssh/k8s_cluster_key.pem # GitHub Sırları'nda tanımlanmalı
+          echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key
+          chmod 600 ~/.ssh/k8s_cluster_key
 
-      - name: Provide Ansible Vault Password
-        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt # GitHub Sırları'nda tanımlanmalı
-        # Hassas bilgileri loglardan gizlemek istersen, aşağıdaki yorum satırlarını etkinleştir:
-        # shell: bash
-        # env:
-        #   ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
-        # run: echo "$ANSIBLE_VAULT_PASSWORD" > vault_pass.txt
-
-      - name: Run Ansible Playbook for Deployment, Security and E2E Tests
+      - name: Run Ansible Playbook
         run: |
-          # Frontend ve Backend imaj etiketlerini Bash değişkenlerine al
-          FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-          BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" # Hata düzeltildi: Tekrar tanımlama kaldırıldı
-
-          # Bash string manipülasyonu ile sadece etiketi al (ör: "repo/image:tag" -> "tag")
-          FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
-          BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
-
-          ansible-playbook ansible/deploy.yaml \
-            -i ansible/k3s-cluster.ini \
-            --vault-password-file vault_pass.txt \
-            --extra-vars "helm_release_name=my-app" \
-            --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/myapp/" \
-            --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
-            --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
-            --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
-            --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \
-            --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com" # Uygulamanızın gerçek alan adını güncelleyin
+          docker run --rm -v $(pwd):/work -w /work \
+            -e ANSIBLE_VAULT_PASSWORD="${{ secrets.ANSIBLE_VAULT_PASSWORD }}" \
+            ansible/ansible-runner:latest \
+            ansible-playbook ansible/deploy.yaml \
+              -i ansible/k3s-cluster.ini \
+              --vault-password=$ANSIBLE_VAULT_PASSWORD \
+              --extra-vars "helm_release_name=my-app" \
+              --extra-vars "k8s_namespace=default" \
+              --extra-vars "helm_chart_path=../helm/myapp/" \
+              --extra-vars "frontend_image=${{ needs.test-and-build.outputs.image_tag_full_frontend }}" \
+              --extra-vars "backend_image=${{ needs.test-and-build.outputs.image_tag_full_backend }}" \
+              --extra-vars "app_domain=uygulama-adi-${{ needs.test-and-build.outputs.deploy_env }}.example.com"
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
-
-      - name: Clean up Vault Password File
-        if: always() # Önceki adımlar başarısız olsa bile çalışır
-        run: rm -f vault_pass.txt
