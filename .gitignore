@@ -143,3 +143,4 @@ myenv/
 myenv/
 __pycache__/
 *.pyc
+k3s/

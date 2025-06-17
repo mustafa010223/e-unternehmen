@@ -151,23 +151,38 @@ jobs:
           echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
           chmod 600 ~/.ssh/k8s_cluster_key.pem # Anahtarın izinlerini ayarla (GitHub Sırları'nda tanımlanmalı)
 
-      # --- KUBECONFIG YAPILANDIRMASI İÇİN YENİ EKLENEN/DÜZELTİLEN ADIM ---
+      # --- KUBECONFIG YAPILANDIRMASI İÇİN DÜZELTİLEN VE DAHA DETAYLI LOGLAMA SAĞLAYAN ADIM ---
       - name: Kubeconfig'i Koşucuda Çek ve Yapılandır
         run: |
-          mkdir -p ~/.kube
+          mkdir -p ~/.kube || true # Dizin zaten varsa hata vermesin
+          
           # K3s master düğümünüzdeki /home/mustafa/k3s.yaml konumundan kubeconfig dosyasını çekin.
           # Önceki adımda bu dosyayı buraya kopyalamıştınız ve izinlerini düzeltmiştiniz.
           # 'mustafa@192.168.0.60' yerine kendi SSH kullanıcı adınızı ve K3s master IP'nizi KESİNLİKLE kullanın.
-          scp -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            mustafa@192.168.0.60:/home/mustafa/k3s.yaml ~/.kube/config
+          # scp komutunun başarısını kontrol edin ve loglayın.
+          echo "Attempting to SCP kubeconfig from mustafa@192.168.0.60:/home/mustafa/k3s.yaml to ~/.kube/config"
+          if scp -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            mustafa@192.168.0.60:/home/mustafa/k3s.yaml ~/.kube/config; then
+            echo "SCP işlemi başarılı: Kubeconfig dosyası koşucuya kopyalandı."
+          else
+            echo "SCP işlemi BAŞARISIZ OLDU. Lütfen K3s sunucusundaki /home/mustafa/k3s.yaml dosyasının varlığını ve mustafa kullanıcısının okuma iznini kontrol edin. Bu hata pipeline'ı durduracaktır."
+            exit 1 # Hata durumunda pipeline'ı durdur
+          fi
 
           # Kubeconfig dosyası için doğru izinleri ayarla
           chmod 600 ~/.kube/config
+          echo "Kubeconfig dosya izinleri 600 olarak ayarlandı."
 
           # Kubeconfig dosyasındaki sunucu adresini localhost/127.0.0.1'den K3s master IP'sine güncelleyin.
           # Koşucu K3s master'ının haricinde olduğu için bu çok önemlidir.
-          sed -i "s/server: https:\/\/127.0.0.1:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config || \
-          sed -i "s/server: https:\/\/localhost:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config || true
+          # sed komutlarının başarısını kontrol edin ve loglayın.
+          if sed -i "s/server: https:\/\/127.0.0.1:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config; then
+            echo "Kubeconfig server adresi 127.0.0.1'den 192.168.0.60'a güncellendi."
+          elif sed -i "s/server: https:\/\/localhost:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config; then
+            echo "Kubeconfig server adresi localhost'tan 192.168.0.60'a güncellendi."
+          else
+            echo "UYARI: Kubeconfig dosyasında 127.0.0.1 veya localhost sunucu adresi bulunamadı/güncellenemedi. Kubeconfig dosyası zaten doğru IP'yi içeriyor olabilir veya manuel müdahale gerekebilir."
+          fi
 
           # Hata ayıklama çıktısı: Kubeconfig'in bazı kısımlarını yazdır (hassas verileri gizleyerek)
           echo "--- Kubeconfig dosyası oluşturuldu ve güncellendi ---"
