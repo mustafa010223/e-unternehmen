@@ -1,9 +1,9 @@
----
 - name: Helm ile Kubernetes Dağıtım ve Güvenlik Denetimi
   hosts: k3s_cluster
   become: true
   vars_files:
-    - secrets.yml
+    # secrets.yaml dosyasının yolu, artık 'ansible/secrets/' dizinini yansıtacak şekilde düzeltildi.
+    - secrets/secrets.yaml # Doğru yol: ansible/secrets/secrets.yaml
 
   vars:
     helm_release_name: "my-app"
@@ -14,20 +14,26 @@
     backend_image_tag: "latest"
     app_domain: "app.mustafasalik.de"
     enable_selenium_tests: true
-    playbook_dir: "{{ lookup('env', 'PWD') }}"  # Otomatik dizin tanımlama
+    # playbook_dir'in değeri, GitHub Actions'ta playbook'un çalıştırıldığı dizin olacaktır.
+    # Bu genellikle deponun kök dizinidir.
+    # GitHub Actions'daki `ansible-playbook ansible/playbook.yaml` komutu bu playbook'u
+    # deponun kökünden çalıştırdığı için `PWD` doğru çalışır.
+    playbook_dir: "{{ lookup('env', 'PWD') }}/ansible" # Ansible dizininin mutlak yolunu verir
 
   tasks:
     # 1. ConfigMap Oluşturma
     - name: Selenium test betiği ConfigMap'i oluştur
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('file', playbook_dir + '/selenium-test-configmap.yaml') | from_yaml }}"
+        # Hata düzeltmesi burada yapıldı: 'configs/' dizini eklendi
+        definition: "{{ lookup('file', playbook_dir + '/configs/selenium-test-configmap.yaml') | from_yaml }}"
       tags: configmap
 
     # 2. Helm Dağıtımı
     - name: Helm chart'ı güncelle
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
+        # chart_ref yolu playbook_dir değişkenine göre ayarlandı
         chart_ref: "{{ playbook_dir }}/../helm/my-app/"
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
@@ -43,7 +49,10 @@
       tags: deploy
 
     # 3. Güncel Güvenlik Politikaları (PSP yerine)
-    - name: Pod Güvenlik Standartları uygula
+    # Kubernetes 1.25 ve sonrası için PodSecurityPolicies (PSP) kaldırılmıştır.
+    # Bunun yerine Pod Security Standards (PSS) kullanılır.
+    # Burada Namespace'e Pod Security Standard etiketleri eklenerek PSS uygulanır.
+    - name: Pod Güvenlik Standartları uygula (Namespace'e etiket ekle)
       kubernetes.core.k8s:
         state: present
         definition:
@@ -52,7 +61,9 @@
           metadata:
             name: "{{ k8s_namespace }}"
             labels:
-              pod-security.kubernetes.io/enforce: baseline
+              pod-security.kubernetes.io/enforce: baseline # veya 'restricted'
+              # pod-security.kubernetes.io/warn: restricted
+              # pod-security.kubernetes.io/audit: restricted
       tags: security
 
     # 4. Ağ Politikası
@@ -66,20 +77,22 @@
             name: allow-monitoring-only
             namespace: "{{ k8s_namespace }}"
           spec:
-            podSelector: {}
+            podSelector: {} # Tüm pod'lar için geçerli
             policyTypes:
-              - Ingress
+              - Ingress # Gelen trafiği etkiler
             ingress:
               - ports:
                   - protocol: TCP
-                    port: 9100
+                    port: 9100 # Örnek: Prometheus exporter portu
                 from:
                   - namespaceSelector:
                       matchLabels:
+                        # 'monitoring' adında bir namespace'ten gelen trafiğe izin verir
                         kubernetes.io/metadata.name: monitoring
       tags: security
 
     # 5. Selenium Testleri
+    # Bu görev, enable_selenium_tests değişkeni true ise çalışır.
     - name: Selenium test job'u başlat
       kubernetes.core.k8s:
         state: present
@@ -87,68 +100,74 @@
           apiVersion: batch/v1
           kind: Job
           metadata:
+            # İşin adını benzersiz hale getirmek için timestamp kullanılır
             name: "{{ helm_release_name }}-selenium-test-{{ lookup('pipe', 'date +%s') }}"
             namespace: "{{ k8s_namespace }}"
           spec:
+            # Job tamamlandıktan sonra 300 saniye (5 dakika) sonra otomatik olarak silinir
             ttlSecondsAfterFinished: 300
             template:
               spec:
                 containers:
                   - name: selenium-runner
-                    image: python:3.9-slim
+                    image: python:3.9-slim # Testleri çalıştırmak için Python imajı
+                    # Test betiğinin yolu
                     command: ["python3", "/app/run_tests.py"]
                     args:
+                      # Ortam ve uygulama URL'si argüman olarak geçilir
                       - "--env"
                       - "{{ lookup('env', 'DEPLOY_ENV_NAME') | default('production') }}"
                       - "--app-url"
-                      - "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local"
+                      - "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local" # Küme içi servis URL'si
                     env:
                       - name: GRID_URL
-                        value: "http://selenium-grid:4444/wd/hub"
+                        value: "http://selenium-grid:4444/wd/hub" # Selenium Grid URL'si
                     volumeMounts:
                       - name: test-scripts-volume
-                        mountPath: /app
+                        mountPath: /app # Test betiğinin bağlanacağı yol
                 volumes:
                   - name: test-scripts-volume
                     configMap:
-                      name: selenium-test-script
-                restartPolicy: Never
-            backoffLimit: 0
-      when: enable_selenium_tests
+                      name: selenium-test-script # Selenium test betiğinin ConfigMap adı
+                restartPolicy: Never # Job tamamlandığında veya başarısız olduğunda yeniden başlatılmaz
+            backoffLimit: 0 # Tekrar deneme sayısı (0 = yeniden deneme yok)
+      when: enable_selenium_tests # Bu görevi kontrol eden değişken
       tags: testing
 
     # 6. Vault Şifre Rotasyonu
+    # Bu görev, secrets.yaml dosyasının şifresini yeni bir parola ile döndürür.
+    # playbook_dir değişkeni sayesinde dosya yolunu otomatik bulur.
     - name: Vault şifresini otomatik döndür
       ansible.builtin.command: >
-        ansible-vault rekey secrets.yml
+        ansible-vault rekey secrets.yaml
         --new-vault-password-file {{ playbook_dir }}/vault_pass_new.txt
       args:
-        creates: "{{ playbook_dir }}/vault_pass_new.txt"
-      run_once: true
+        creates: "{{ playbook_dir }}/vault_pass_new.txt" # Bu dosya varsa komut çalışmaz
+      run_once: true # Sadece bir kez çalıştırılır
       tags: vault
 
-  post_tasks:
+  post_tasks: # Playbook bittikten sonra çalışacak görevler
     # Dağıtım doğrulama
     - name: Pod durumlarını kontrol et
       kubernetes.core.k8s_info:
         kind: Pod
         namespace: "{{ k8s_namespace }}"
         label_selectors:
-          - "app.kubernetes.io/instance={{ helm_release_name }}"
-      register: deployment_pods
-      retries: 10
-      delay: 5
-      until: deployment_pods.resources | length > 0
+          - "app.kubernetes.io/instance={{ helm_release_name }}" # Helm release adı ile ilgili podları seçer
+      register: deployment_pods # Çıktıyı değişkene kaydeder
+      retries: 10 # 10 kez dener
+      delay: 5 # Her deneme arasında 5 saniye bekler
+      until: deployment_pods.resources | length > 0 # Podlar oluşana kadar bekler
 
     # Sağlık kontrolü
     - name: Uygulama sağlık kontrolü
       uri:
-        url: "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local/health"
+        url: "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local/health" # Uygulamanın sağlık kontrolü URL'si
         method: GET
         return_content: yes
-        status_code: 200
-        timeout: 10
-      register: health_check
-      retries: 10
-      delay: 5
-      until: health_check.status == 200
+        status_code: 200 # 200 OK kodu beklenir
+        timeout: 10 # 10 saniye zaman aşımı
+      register: health_check # Çıktıyı değişkene kaydeder
+      retries: 10 # 10 kez dener
+      delay: 5 # Her deneme arasında 5 saniye bekler
+      until: health_check.status == 200 # Sağlık kontrolü başarılı olana kadar bekler
