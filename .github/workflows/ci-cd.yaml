@@ -155,11 +155,11 @@ jobs:
       - name: Kubeconfig'i Koşucuda Çek ve Yapılandır
         run: |
           mkdir -p ~/.kube
-          # K3s master düğümünüzden kubeconfig dosyasını güvenli bir şekilde koşucuya kopyalayın.
+          # K3s master düğümünüzdeki /home/mustafa/k3s.yaml konumundan kubeconfig dosyasını çekin.
+          # Önceki adımda bu dosyayı buraya kopyalamıştınız ve izinlerini düzeltmiştiniz.
           # 'mustafa@192.168.0.60' yerine kendi SSH kullanıcı adınızı ve K3s master IP'nizi KESİNLİKLE kullanın.
-          # 'mustafa' kullanıcısının /etc/rancher/k3s/k3s.yaml üzerinde okuma izinleri olduğundan emin olun.
           scp -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            mustafa@192.168.0.60:/etc/rancher/k3s/k3s.yaml ~/.kube/config
+            mustafa@192.168.0.60:/home/mustafa/k3s.yaml ~/.kube/config
 
           # Kubeconfig dosyası için doğru izinleri ayarla
           chmod 600 ~/.kube/config
