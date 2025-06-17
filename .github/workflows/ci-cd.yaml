@@ -165,12 +165,12 @@ jobs:
           mkdir -p ansible # Eğer silinmişse tekrar oluştur (emin olmak için)
           rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
           
-          # Envanter dosyasının içeriğini doğrudan shell değişkenine atayıp sonra dosyaya yazma.
+          # Envanter dosyasının içeriğini doğrudan bir shell değişkenine atayıp sonra dosyaya yazma.
           # Bu yöntem YAML ayrıştırma hatalarını daha iyi önler.
           # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa', 'root', 'ubuntu' vb.)
           # ansible_env değişkeni ile KUBECONFIG yolu burada ayarlanıyor.
           INVENTORY_CONTENT="[k3s_cluster]\n192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'"
-          echo "$INVENTORY_CONTENT" > ansible/k3s-cluster.ini
+          echo -e "$INVENTORY_CONTENT" > ansible/k3s-cluster.ini # `-e` ile escape dizilerini yorumla
           
           # Oluşturulan dosyayı doğrula ve loglara yaz (hata ayıklama için çok önemli)
           echo "--- Content of newly created k3s-cluster.ini ---"
@@ -194,7 +194,7 @@ jobs:
       - name: Run Ansible Playbook for Deployment, Security and E2E Tests # Ansible playbook'unu çalıştır (dağıtım, güvenlik ve E2E testleri için)
         shell: bash # Sanal ortamı etkinleştirmek için shell'i belirt
         run: |
-          source .venv/bin/activate # Sanal ortamı yeniden etkinleştir (önceki adımın shell'i kaplandığı için)
+          source .venv/bin/activate # Sanal ortamı yeniden etkinleştir (önceki adımın shell'i kapandığı için)
           
           # --- Ansible Envanter ve Bağlantı Hata Ayıklama Başlangıcı ---
           echo "--- Debugging Ansible Inventory and Connectivity ---"
