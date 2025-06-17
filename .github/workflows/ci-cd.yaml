@@ -126,7 +126,7 @@ jobs:
       - name: Checkout Repository on Self-Hosted Runner
         uses: actions/checkout@v4
         with:
-          # submodules: false 
+          submodules: false 
           # Veya altmodül gerekli ise ve URL sorunu varsa, .gitmodules dosyanızı kontrol edin.
 
       - name: Debug Print Current Working Directory
