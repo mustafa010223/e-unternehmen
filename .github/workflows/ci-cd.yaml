@@ -240,7 +240,7 @@ jobs:
       - name: Clean up Vault Password File # Vault parola dosyasını temizle
         if: always() # Önceki adımlar başarısız olsa bile çalışır
         run: rm -f vault_pass.txt
-```
+# This is a corrected version of the CI/CD workflow for deploying a microservices application using Ansible and Docker.
 The change specifically addresses the `printf` command that writes to the Ansible inventory file (`ansible/k3s-cluster.ini`). Instead of multiple `printf` calls with line continuations, it now uses a single `printf "%s\n"` with multiple arguments, which is generally safer for multiline string generation in shell scripts, especially when embedded in YAML.
 
 Please update your `.github/workflows/ci-cd.yaml` file with the contents of this corrected Canvas and run the workflow again. This should resolve the `Unexpected value ''` error at line 1
