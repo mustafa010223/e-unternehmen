@@ -156,10 +156,13 @@ jobs:
         run: |
           mkdir -p ansible
           rm -f ansible/k3s-cluster.ini
-      
-          INVENTORY_CONTENT="[k3s_cluster]\n192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'"
-          echo -e "$INVENTORY_CONTENT" > ansible/k3s-cluster.ini
-      
+          
+          # Envanter dosyasının içeriğini doğrudan echo komutuna aktararak dosyaya yazma.
+          # Bu yöntem YAML ayrıştırma hatalarını daha iyi önler.
+          # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa', 'root', 'ubuntu' vb.)
+          # ansible_env değişkeni ile KUBECONFIG yolu burada ayarlanıyor.
+          echo -e "[k3s_cluster]\n192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'" > ansible/k3s-cluster.ini
+          
           echo "--- Content of newly created k3s-cluster.ini ---"
           cat ansible/k3s-cluster.ini
           echo "------------------------------------------------"
@@ -182,7 +185,7 @@ jobs:
         shell: bash
         run: |
           source .venv/bin/activate
-        
+          
           echo "--- Debugging Ansible Inventory and Connectivity ---"
           which ansible
           ansible --version
@@ -193,10 +196,13 @@ jobs:
           echo "Testing SSH connectivity to master (192.168.0.60):"
           ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 'echo Connected && exit' || echo "SSH connection to 192.168.0.60 failed."
           echo "--- End Debugging Ansible Inventory and Connectivity ---"
+
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
           BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" 
+
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
           BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
+
           ansible-playbook ansible/playbook.yaml \
             -i ansible/k3s-cluster.ini \
             --vault-password-file vault_pass.txt \
