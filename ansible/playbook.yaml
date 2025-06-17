@@ -182,11 +182,12 @@
         namespace: "{{ k8s_namespace }}"
         label_selectors:
           - "app.kubernetes.io/instance={{ helm_release_name }}"
+        kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi  
       register: deployment_pods
       retries: 10
       delay: 5
       until: deployment_pods.resources | length > 0
-      kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi
+      
 
     - name: Uygulama sağlık kontrolü
       uri:
