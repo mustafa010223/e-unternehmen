@@ -209,7 +209,7 @@ jobs:
           # ansible-playbook komutunu çalıştır.
           # Her satır sonunda '\' varsa, sonrasında boşluk olmadığından emin ol.
           # Son '--extra-vars' satırının sonunda '\' OLMAMALI ve boşluk OLMAMALI.
-          ansible-playbook ansible/deploy.yaml \
+          ansible-playbook ansible/playbook.yaml \
             -i ansible/k3s-cluster.ini \
             --vault-password-file vault_pass.txt \
             --extra-vars "helm_release_name=my-app" \
