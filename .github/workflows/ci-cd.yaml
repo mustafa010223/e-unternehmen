@@ -5,48 +5,48 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_dispatch: # Manuel tetikleme (GitHub arayüzünden çalıştırılabilir)
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true # Aynı işin eski sürümleri iptal edilir
+  cancel-in-progress: true
 
 env:
-  DOCKERHUB_USERNAME: meyfcsalik # Buraya kendi Docker Hub kullanıcı adınızı girin
+  DOCKERHUB_USERNAME: meyfcsalik
 
 jobs:
   test-and-build:
     name: Test, Build and Push Docker Images
-    runs-on: ubuntu-latest # GitHub tarafından barındırılan en son Ubuntu sürümü
+    runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.vars.outputs.sha_full }} # Tam commit SHA'sını çıktı olarak ver
-      deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }} # Dağıtım ortamını (production/staging) çıktı olarak ver
+      image_tag: ${{ steps.vars.outputs.sha_full }}
+      deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
       image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-    services: # Testler için geçici MongoDB servisi başlat
+    services:
       mongodb_test:
-        image: mongo:6.0 # MongoDB 6.0 imajını kullan
-        ports: [27017:27017] # 27017 portunu eşle
+        image: mongo:6.0
+        ports: [27017:27017]
     steps:
-      - name: Checkout Repository # Depoyu klonla
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # TruffleHog için tüm geçmişi çek
+          fetch-depth: 0
 
-      - name: Set up Node.js with Cache v2 # Node.js 18 kur ve bağımlılıkları önbelleğe al
+      - name: Set up Node.js with Cache v2
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: | # Hangi dosyaların önbellek bağımlılığı olduğunu belirt
+          cache-dependency-path: |
             frontend/package-lock.json
             backend/package-lock.lock
       
-      - name: Set Output Variables (Commit SHA) # Commit SHA'sını çıktı değişkeni olarak ayarla
+      - name: Set Output Variables (Commit SHA)
         id: vars
         run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Determine Environment Name # Ortam adını (production/staging) belirle
+      - name: Determine Environment Name
         id: set_env
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
@@ -55,50 +55,48 @@ jobs:
             echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
           fi
 
-      - name: Frontend - Install Dependencies & Lint # Ön uç bağımlılıklarını yükle ve lintle
+      - name: Frontend - Install Dependencies & Lint
         working-directory: ./frontend
         run: |
           npm ci
           npm run lint --if-present
 
-      - name: Frontend - Run Tests # Ön uç testlerini çalıştır
+      - name: Frontend - Run Tests
         working-directory: ./frontend
         run: npm test --if-present -- --watchAll=false --coverage
 
-      - name: Frontend - Build # Ön uç uygulamasını derle
+      - name: Frontend - Build
         working-directory: ./frontend
         run: npm run build
 
-      - name: Backend - Install Dependencies & Lint # Arka uç bağımlılıklarını yükle ve lintle
+      - name: Backend - Install Dependencies & Lint
         working-directory: ./backend
         run: |
           npm ci
           npm run lint --if-present
 
-      - name: Backend - Run Tests # Arka uç testlerini çalıştır
+      - name: Backend - Run Tests
         working-directory: ./backend
         run: npm test --if-present -- --watchAll=false --coverage
         env:
-          MONGO_URL: mongodb://localhost:27017/my-app_test # Testler için MongoDB URL'si (my-app olarak güncellendi)
+          MONGO_URL: mongodb://localhost:27017/my-app_test
 
-      - name: Scan for secrets with TruffleHog # TruffleHog ile gizli anahtar taraması yap
+      - name: Scan for secrets with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
           base: HEAD~1
           head: HEAD
-          # TruffleHog aksiyonunun 'extra_args' veya 'exclude-patterns' parametreleriyle ilgili sürekli sorun yaşadığımız için
-          # bu kısmı şimdilik kaldırıyoruz. Sadece 'continue-on-error: true' ile hatayı yoksayacağız.
-        continue-on-error: true # Hata olsa bile pipeline'ın devam etmesini sağlar.
+        continue-on-error: true
 
-      - name: Log in to Docker Hub # Docker Hub'a giriş yap (yalnızca push olaylarında)
+      - name: Log in to Docker Hub
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }} # GitHub Sırları'nda tanımlanmalı
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push Frontend Docker Image # Ön uç Docker imajını derle ve gönder
+      - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
@@ -108,7 +106,7 @@ jobs:
           tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
           no-cache: true
 
-      - name: Build and Push Backend Docker Image # Arka uç Docker imajını derle ve gönder
+      - name: Build and Push Backend Docker Image
         if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
@@ -119,107 +117,86 @@ jobs:
           no-cache: true
 
   deploy:
-    name: Deploy to K3s and Run Security/E2E Tests via Ansible # K3s'e dağıtım ve güvenlik/E2E testleri
-    needs: test-and-build # Önceki işin tamamlanmasını bekle
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') # Belirli dallara push olaylarında tetikle
-    runs-on: self-hosted # Kendinden barındırılan koşucu kullan
-    environment: ${{ needs.test-and-build.outputs.deploy_env }} # Dağıtım ortamını ayarla
+    name: Deploy to K3s and Run Security/E2E Tests via Ansible
+    needs: test-and-build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: self-hosted
+    environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Checkout Repository on Self-Hosted Runner # Depoyu kendinden barındırılan koşucuya klonla
+      - name: Checkout Repository on Self-Hosted Runner
         uses: actions/checkout@v4
         with:
-          # Altmodül hatası alıyorsanız ve altmodül artık gerekli değilse bu satırı kullanın:
           # submodules: false 
           # Veya altmodül gerekli ise ve URL sorunu varsa, .gitmodules dosyanızı kontrol edin.
 
-      - name: Debug Print Current Working Directory # Hata ayıklama için dizin bilgilerini yazdır
+      - name: Debug Print Current Working Directory
         run: |
           pwd
           ls -F
           ls -F ansible/
-          ls -F helm/my-app # Dizin adı 'my-app' olarak güncellendiği için düzeltildi
+          ls -F helm/my-app
 
-      - name: Set up Python and Install Ansible on Self-Hosted Runner # Python ve Ansible'ı kur (sanal ortam ile)
+      - name: Set up Python and Install Ansible on Self-Hosted Runner
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-venv # Sanal ortam için gerekli paketi yükle
+          sudo apt-get install -y python3-venv
           
-          python3 -m venv .venv # Sanal ortam oluştur
-          source .venv/bin/activate # Sanal ortamı etkinleştir
+          python3 -m venv .venv
+          source .venv/bin/activate
           
-          pip install ansible openshift # Ansible ve gerekli modülleri sanal ortama kur
+          pip install ansible openshift
 
-      - name: Configure SSH Private Key for Ansible # Ansible için SSH özel anahtarını yapılandır
+      - name: Configure SSH Private Key for Ansible
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
-          chmod 600 ~/.ssh/k8s_cluster_key.pem # Anahtarın izinlerini ayarla (GitHub Sırları'nda tanımlanmalı)
+          chmod 600 ~/.ssh/k8s_cluster_key.pem
 
-      # Kubeconfig'in koşucuya çekilmesi adımına artık gerek yok.
-      # Kubeconfig dosyasının K3s master düğümünde (192.168.0.60 IP'li sunucuda) /home/mustafa/kubeconfig konumunda
-      # var olduğundan ve doğru izinlerle yapılandırıldığından emin olun.
-      # Bu dosyanın oluşturulması ve güncellenmesi Ansible Playbook'un ilk görevinde yapılacaktır.
-
-      - name: Create Ansible Inventory File on Runner # Ansible envanter dosyasını koşucu üzerinde oluştur
+      - name: Create Ansible Inventory File on Runner
         run: |
-          mkdir -p ansible # Eğer silinmişse tekrar oluştur (emin olmak için)
-          rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
-          
-          # Envanter dosyasının içeriğini doğrudan bir shell değişkenine atayıp sonra dosyaya yazma.
-          # Bu yöntem YAML ayrıştırma hatalarını daha iyi önler.
-          # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa', 'root', 'ubuntu' vb.)
-          # ansible_env değişkeni ile KUBECONFIG yolu burada ayarlanıyor.
+          mkdir -p ansible
+          rm -f ansible/k3s-cluster.ini
+      
           INVENTORY_CONTENT="[k3s_cluster]\n192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'"
-          echo -e "$INVENTORY_CONTENT" > ansible/k3s-cluster.ini # `-e` ile escape dizilerini yorumla
-          
-          # Oluşturulan dosyayı doğrula ve loglara yaz (hata ayıklama için çok önemli)
+          echo -e "$INVENTORY_CONTENT" > ansible/k3s-cluster.ini
+      
           echo "--- Content of newly created k3s-cluster.ini ---"
           cat ansible/k3s-cluster.ini
           echo "------------------------------------------------"
-          ls -l ansible/k3s-cluster.ini # Dosya izinlerini ve varlığını kontrol et
-          chmod 644 ansible/k3s-cluster.ini # Okunabilir olduğundan emin ol
+          ls -l ansible/k3s-cluster.ini
+          chmod 644 ansible/k3s-cluster.ini
 
-      - name: Verify Inventory Creation & Location # Envanter oluşturma ve konumunu doğrulama adımı
+      - name: Verify Inventory Creation & Location
         run: |
           echo "--- Checking inventory file after creation ---"
-          pwd # Mevcut çalışma dizinini tekrar yazdır
-          ls -l ansible/k3s-cluster.ini # Dosyanın varlığını ve izinlerini kontrol et
-          cat ansible/k3s-cluster.ini # İçeriğini tekrar logla
+          pwd
+          ls -l ansible/k3s-cluster.ini
+          cat ansible/k3s-cluster.ini
           echo "----------------------------------------------"
 
-      - name: Provide Ansible Vault Password # Ansible Vault parolasını sağla
+      - name: Provide Ansible Vault Password
         run: |
-          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt # GitHub Sırları'nda tanımlanmalı
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
 
-      - name: Run Ansible Playbook for Deployment, Security and E2E Tests # Ansible playbook'unu çalıştır (dağıtım, güvenlik ve E2E testleri için)
-        shell: bash # Sanal ortamı etkinleştirmek için shell'i belirt
+      - name: Run Ansible Playbook for Deployment, Security and E2E Tests
+        shell: bash
         run: |
-          source .venv/bin/activate # Sanal ortamı yeniden etkinleştir (önceki adımın shell'i kapandığı için)
-          
-          # --- Ansible Envanter ve Bağlantı Hata Ayıklama Başlangıcı ---
+          source .venv/bin/activate
+        
           echo "--- Debugging Ansible Inventory and Connectivity ---"
-          which ansible # Ansible'ın nerede olduğunu göster (sanal ortamdaki)
-          ansible --version # Ansible sürümünü göster
+          which ansible
+          ansible --version
           echo "Contents of ansible/k3s-cluster.ini:"
-          cat ansible/k3s-cluster.ini # Envanter dosyasının içeriğini göster
+          cat ansible/k3s-cluster.ini
           echo "Ansible Inventory List (should show k8s_cluster and master host):"
-          ansible-inventory -i ansible/k3s-cluster.ini --list # Ansible'ın envanteri nasıl gördüğünü gördüğünüze emin olun
+          ansible-inventory -i ansible/k3s-cluster.ini --list
           echo "Testing SSH connectivity to master (192.168.0.60):"
-          # SSH bağlantısını test et (StrictHostKeyChecking=no ve UserKnownHostsFile=/dev/null ile ilk bağlantı hatalarını önle)
           ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 'echo Connected && exit' || echo "SSH connection to 192.168.0.60 failed."
           echo "--- End Debugging Ansible Inventory and Connectivity ---"
-
-          # Frontend ve Backend imaj etiketlerini Bash değişkenlerine al
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
           BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" 
-
-          # Bash string manipülasyonu ile sadece etiketi al (ör: "repo/image:tag" -> "tag")
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
           BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
-
-          # ansible-playbook komutunu çalıştır.
-          # Her satır sonunda '\' varsa, sonrasında boşluk olmadığından emin ol.
-          # Son '--extra-vars' satırının sonunda '\' OLMAMALI ve boşluk OLMAMALI.
           ansible-playbook ansible/playbook.yaml \
             -i ansible/k3s-cluster.ini \
             --vault-password-file vault_pass.txt \
@@ -233,8 +210,8 @@ jobs:
             --extra-vars "app_domain=my-app-${{ needs.test-and-build.outputs.deploy_env }}.example.com" \
             --extra-vars "deploy_env_name=${{ needs.test-and-build.outputs.deploy_env }}"
         env:
-          ANSIBLE_HOST_KEY_CHECKING: 'False' # SSH host anahtarı doğrulamayı kapat (daha kolay hata ayıklama için)
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
 
-      - name: Clean up Vault Password File # Vault parola dosyasını temizle
-        if: always() # Önceki adımlar başarısız olsa bile çalışır
+      - name: Clean up Vault Password File
+        if: always()
         run: rm -f vault_pass.txt
