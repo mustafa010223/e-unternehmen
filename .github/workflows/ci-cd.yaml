@@ -22,7 +22,7 @@ jobs:
       image_tag: ${{ steps.vars.outputs.sha_full }} # Tam commit SHA'sını çıktı olarak ver
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }} # Dağıtım ortamını (production/staging) çıktı olarak ver
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_env }}-${{ steps.vars.outputs.sha_full }}
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
     services: # Testler için geçici MongoDB servisi başlat
       mongodb_test:
         image: mongo:6.0 # MongoDB 6.0 imajını kullan
@@ -150,6 +150,30 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
           chmod 600 ~/.ssh/k8s_cluster_key.pem # Anahtarın izinlerini ayarla (GitHub Sırları'nda tanımlanmalı)
+
+      # --- KUBECONFIG YAPILANDIRMASI İÇİN YENİ EKLENEN/DÜZELTİLEN ADIM ---
+      - name: Kubeconfig'i Koşucuda Çek ve Yapılandır
+        run: |
+          mkdir -p ~/.kube
+          # K3s master düğümünüzden kubeconfig dosyasını güvenli bir şekilde koşucuya kopyalayın.
+          # 'mustafa@192.168.0.60' yerine kendi SSH kullanıcı adınızı ve K3s master IP'nizi KESİNLİKLE kullanın.
+          # 'mustafa' kullanıcısının /etc/rancher/k3s/k3s.yaml üzerinde okuma izinleri olduğundan emin olun.
+          scp -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            mustafa@192.168.0.60:/etc/rancher/k3s/k3s.yaml ~/.kube/config
+
+          # Kubeconfig dosyası için doğru izinleri ayarla
+          chmod 600 ~/.kube/config
+
+          # Kubeconfig dosyasındaki sunucu adresini localhost/127.0.0.1'den K3s master IP'sine güncelleyin.
+          # Koşucu K3s master'ının haricinde olduğu için bu çok önemlidir.
+          sed -i "s/server: https:\/\/127.0.0.1:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config || \
+          sed -i "s/server: https:\/\/localhost:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config || true
+
+          # Hata ayıklama çıktısı: Kubeconfig'in bazı kısımlarını yazdır (hassas verileri gizleyerek)
+          echo "--- Kubeconfig dosyası oluşturuldu ve güncellendi ---"
+          cat ~/.kube/config | grep -v "client-certificate-data\|client-key-data\|certificate-authority-data" || true
+          echo "-----------------------------------------"
+      # --- KUBECONFIG ADIMININ SONU ---
 
       - name: Create Ansible Inventory File on Runner # Ansible envanter dosyasını koşucu üzerinde oluştur
         run: |
