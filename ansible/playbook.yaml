@@ -1,8 +1,8 @@
 - name: Helm ile Kubernetes Dağıtım ve Güvenlik Denetimi
   hosts: k3s_cluster
-  become: true
+  become: true # Bu playbook'taki görevlerin root yetkisiyle çalışmasını sağlar (örneğin dosya kopyalama/izinleri ayarlama)
   vars_files:
-    # secrets.yaml dosyasının yolu, artık 'ansible/secrets/' dizinini yansıtacak şekilde düzeltildi.
+    # secrets.yaml dosyasının yolu, ansible playbook'unun çalıştığı dizine göre ayarlanmalı.
     - secrets/secrets.yaml # Doğru yol: ansible/secrets/secrets.yaml
 
   vars:
@@ -14,26 +14,64 @@
     backend_image_tag: "latest"
     app_domain: "app.mustafasalik.de"
     enable_selenium_tests: true
-    # playbook_dir'in değeri, GitHub Actions'ta playbook'un çalıştırıldığı dizin olacaktır.
-    # Bu genellikle deponun kök dizinidir.
-    # GitHub Actions'daki `ansible-playbook ansible/playbook.yaml` komutu bu playbook'u
-    # deponun kökünden çalıştırdığı için `PWD` doğru çalışır.
     playbook_dir: "{{ lookup('env', 'PWD') }}/ansible" # Ansible dizininin mutlak yolunu verir
 
   tasks:
+    # YENİ GÖREV: Kubeconfig Dosyasını K3s Master Üzerinde Ayarla
+    - name: Kubeconfig Dosyasını Ayarla ve Sunucu Adresini Güncelle
+      # Bu görev, K3s master düğümündeki kubeconfig dosyasını hazırlar.
+      # Bu görevdeki 'mustafa' kullanıcı adı, Ansible SSH kullanıcısı ile aynı olmalıdır.
+      block:
+        - name: Ensure /home/{{ ansible_user }} exists
+          ansible.builtin.file:
+            path: /home/{{ ansible_user }}
+            state: directory
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0755'
+          when: ansible_user != 'root' # Eğer ansible_user root değilse ve home dizini yoksa oluştur
+
+        - name: Copy kubeconfig from /etc/rancher/k3s/k3s.yaml to /home/{{ ansible_user }}/kubeconfig
+          ansible.builtin.copy:
+            src: /etc/rancher/k3s/k3s.yaml
+            dest: /home/{{ ansible_user }}/kubeconfig
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0600' # Sadece sahip okuma/yazma iznine sahip olsun
+            remote_src: yes # Kaynak dosyanın hedef makinede olduğunu belirtir
+
+        - name: Update kubeconfig server address from localhost/127.0.0.1 to actual IP
+          ansible.builtin.replace:
+            path: /home/{{ ansible_user }}/kubeconfig
+            regexp: 'server: https:\/\/((127\.0\.0\.1)|(localhost)):6443'
+            replace: 'server: https://192.168.0.60:6443'
+            # Ansible'ın hedef ana bilgisayarın gerçek IP'sini keşfetmesi için (daha dinamik)
+            # replace: 'server: https://{{ ansible_host }}:6443'
+            # `ansible_host` yerine doğrudan IP adresi kullanılmasının nedeni, bu IP'nin inventory'de sabit olmasıdır.
+
+        - name: Verify kubeconfig file content (server address)
+          ansible.builtin.command: cat /home/{{ ansible_user }}/kubeconfig
+          register: kubeconfig_content
+          changed_when: false # Bu komut hiçbir şeyi değiştirmez
+          
+        - name: Display kubeconfig server address for verification
+          ansible.builtin.debug:
+            msg: "Kubeconfig server address: {{ kubeconfig_content.stdout | regex_search('server: (.*)', '\\1') | first }}"
+
+      tags: kubeconfig_setup # Bu görevi ayrı olarak çalıştırmak/atlamak için bir etiket
+
     # 1. ConfigMap Oluşturma
     - name: Selenium test betiği ConfigMap'i oluştur
       kubernetes.core.k8s:
         state: present
-        # Hata düzeltmesi burada yapıldı: 'configs/' dizini eklendi
         definition: "{{ lookup('file', playbook_dir + '/configs/selenium-test-configmap.yaml') | from_yaml }}"
+        kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi
       tags: configmap
 
     # 2. Helm Dağıtımı
     - name: Helm chart'ı güncelle
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
-        # chart_ref yolu playbook_dir değişkenine göre ayarlandı
         chart_ref: "{{ playbook_dir }}/../helm/my-app/"
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
@@ -46,12 +84,10 @@
             image:
               repository: "{{ backend_image_repo }}"
               tag: "{{ backend_image_tag }}"
+        kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi
       tags: deploy
 
     # 3. Güncel Güvenlik Politikaları (PSP yerine)
-    # Kubernetes 1.25 ve sonrası için PodSecurityPolicies (PSP) kaldırılmıştır.
-    # Bunun yerine Pod Security Standards (PSS) kullanılır.
-    # Burada Namespace'e Pod Security Standard etiketleri eklenerek PSS uygulanır.
     - name: Pod Güvenlik Standartları uygula (Namespace'e etiket ekle)
       kubernetes.core.k8s:
         state: present
@@ -61,9 +97,8 @@
           metadata:
             name: "{{ k8s_namespace }}"
             labels:
-              pod-security.kubernetes.io/enforce: baseline # veya 'restricted'
-              # pod-security.kubernetes.io/warn: restricted
-              # pod-security.kubernetes.io/audit: restricted
+              pod-security.kubernetes.io/enforce: baseline
+        kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi
       tags: security
 
     # 4. Ağ Politikası
@@ -77,22 +112,21 @@
             name: allow-monitoring-only
             namespace: "{{ k8s_namespace }}"
           spec:
-            podSelector: {} # Tüm pod'lar için geçerli
+            podSelector: {}
             policyTypes:
-              - Ingress # Gelen trafiği etkiler
+              - Ingress
             ingress:
               - ports:
                   - protocol: TCP
-                    port: 9100 # Örnek: Prometheus exporter portu
+                    port: 9100
                 from:
                   - namespaceSelector:
                       matchLabels:
-                        # 'monitoring' adında bir namespace'ten gelen trafiğe izin verir
                         kubernetes.io/metadata.name: monitoring
+        kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi
       tags: security
 
     # 5. Selenium Testleri
-    # Bu görev, enable_selenium_tests değişkeni true ise çalışır.
     - name: Selenium test job'u başlat
       kubernetes.core.k8s:
         state: present
@@ -100,74 +134,68 @@
           apiVersion: batch/v1
           kind: Job
           metadata:
-            # İşin adını benzersiz hale getirmek için timestamp kullanılır
             name: "{{ helm_release_name }}-selenium-test-{{ lookup('pipe', 'date +%s') }}"
             namespace: "{{ k8s_namespace }}"
           spec:
-            # Job tamamlandıktan sonra 300 saniye (5 dakika) sonra otomatik olarak silinir
             ttlSecondsAfterFinished: 300
             template:
               spec:
                 containers:
                   - name: selenium-runner
-                    image: python:3.9-slim # Testleri çalıştırmak için Python imajı
-                    # Test betiğinin yolu
+                    image: python:3.9-slim
                     command: ["python3", "/app/run_tests.py"]
                     args:
-                      # Ortam ve uygulama URL'si argüman olarak geçilir
                       - "--env"
                       - "{{ lookup('env', 'DEPLOY_ENV_NAME') | default('production') }}"
                       - "--app-url"
-                      - "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local" # Küme içi servis URL'si
+                      - "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local"
                     env:
                       - name: GRID_URL
-                        value: "http://selenium-grid:4444/wd/hub" # Selenium Grid URL'si
+                        value: "http://selenium-grid:4444/wd/hub"
                     volumeMounts:
                       - name: test-scripts-volume
-                        mountPath: /app # Test betiğinin bağlanacağı yol
+                        mountPath: /app
                 volumes:
                   - name: test-scripts-volume
                     configMap:
-                      name: selenium-test-script # Selenium test betiğinin ConfigMap adı
-                restartPolicy: Never # Job tamamlandığında veya başarısız olduğunda yeniden başlatılmaz
-            backoffLimit: 0 # Tekrar deneme sayısı (0 = yeniden deneme yok)
-      when: enable_selenium_tests # Bu görevi kontrol eden değişken
+                      name: selenium-test-script
+                restartPolicy: Never
+            backoffLimit: 0
+        kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi
+      when: enable_selenium_tests
       tags: testing
 
     # 6. Vault Şifre Rotasyonu
-    # Bu görev, secrets.yaml dosyasının şifresini yeni bir parola ile döndürür.
-    # playbook_dir değişkeni sayesinde dosya yolunu otomatik bulur.
     - name: Vault şifresini otomatik döndür
       ansible.builtin.command: >
         ansible-vault rekey secrets.yaml
         --new-vault-password-file {{ playbook_dir }}/vault_pass_new.txt
       args:
-        creates: "{{ playbook_dir }}/vault_pass_new.txt" # Bu dosya varsa komut çalışmaz
-      run_once: true # Sadece bir kez çalıştırılır
+        creates: "{{ playbook_dir }}/vault_pass_new.txt"
+      run_once: true
       tags: vault
 
-  post_tasks: # Playbook bittikten sonra çalışacak görevler
-    # Dağıtım doğrulama
+  post_tasks:
     - name: Pod durumlarını kontrol et
       kubernetes.core.k8s_info:
         kind: Pod
         namespace: "{{ k8s_namespace }}"
         label_selectors:
-          - "app.kubernetes.io/instance={{ helm_release_name }}" # Helm release adı ile ilgili podları seçer
-      register: deployment_pods # Çıktıyı değişkene kaydeder
-      retries: 10 # 10 kez dener
-      delay: 5 # Her deneme arasında 5 saniye bekler
-      until: deployment_pods.resources | length > 0 # Podlar oluşana kadar bekler
+          - "app.kubernetes.io/instance={{ helm_release_name }}"
+      register: deployment_pods
+      retries: 10
+      delay: 5
+      until: deployment_pods.resources | length > 0
+      kubeconfig: /home/mustafa/kubeconfig # Kubeconfig yolu açıkça belirtildi
 
-    # Sağlık kontrolü
     - name: Uygulama sağlık kontrolü
       uri:
-        url: "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local/health" # Uygulamanın sağlık kontrolü URL'si
+        url: "http://{{ helm_release_name }}.{{ k8s_namespace }}.svc.cluster.local/health"
         method: GET
         return_content: yes
-        status_code: 200 # 200 OK kodu beklenir
-        timeout: 10 # 10 saniye zaman aşımı
-      register: health_check # Çıktıyı değişkene kaydeder
-      retries: 10 # 10 kez dener
-      delay: 5 # Her deneme arasında 5 saniye bekler
-      until: health_check.status == 200 # Sağlık kontrolü başarılı olana kadar bekler
+        status_code: 200
+        timeout: 10
+      register: health_check
+      retries: 10
+      delay: 5
+      until: health_check.status == 200

@@ -127,6 +127,10 @@ jobs:
     steps:
       - name: Checkout Repository on Self-Hosted Runner # Depoyu kendinden barındırılan koşucuya klonla
         uses: actions/checkout@v4
+        with:
+          # Altmodül hatası alıyorsanız ve altmodül artık gerekli değilse bu satırı kullanın:
+          # submodules: false 
+          # Veya altmodül gerekli ise ve URL sorunu varsa, .gitmodules dosyanızı kontrol edin.
 
       - name: Debug Print Current Working Directory # Hata ayıklama için dizin bilgilerini yazdır
         run: |
@@ -151,44 +155,10 @@ jobs:
           echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
           chmod 600 ~/.ssh/k8s_cluster_key.pem # Anahtarın izinlerini ayarla (GitHub Sırları'nda tanımlanmalı)
 
-      # --- KUBECONFIG YAPILANDIRMASI İÇİN DÜZELTİLEN VE DAHA DETAYLI LOGLAMA SAĞLAYAN ADIM ---
-      - name: Kubeconfig'i Koşucuda Çek ve Yapılandır
-        run: |
-          mkdir -p ~/.kube || true # Dizin zaten varsa hata vermesin
-          
-          # K3s master düğümünüzdeki /home/mustafa/k3s.yaml konumundan kubeconfig dosyasını çekin.
-          # Önceki adımda bu dosyayı buraya kopyalamıştınız ve izinlerini düzeltmiştiniz.
-          # 'mustafa@192.168.0.60' yerine kendi SSH kullanıcı adınızı ve K3s master IP'nizi KESİNLİKLE kullanın.
-          # scp komutunun başarısını kontrol edin ve loglayın.
-          echo "Attempting to SCP kubeconfig from mustafa@192.168.0.60:/home/mustafa/k3s.yaml to ~/.kube/config"
-          if scp -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            mustafa@192.168.0.60:/home/mustafa/k3s.yaml ~/.kube/config; then
-            echo "SCP işlemi başarılı: Kubeconfig dosyası koşucuya kopyalandı."
-          else
-            echo "SCP işlemi BAŞARISIZ OLDU. Lütfen K3s sunucusundaki /home/mustafa/k3s.yaml dosyasının varlığını ve mustafa kullanıcısının okuma iznini kontrol edin. Bu hata pipeline'ı durduracaktır."
-            exit 1 # Hata durumunda pipeline'ı durdur
-          fi
-
-          # Kubeconfig dosyası için doğru izinleri ayarla
-          chmod 600 ~/.kube/config
-          echo "Kubeconfig dosya izinleri 600 olarak ayarlandı."
-
-          # Kubeconfig dosyasındaki sunucu adresini localhost/127.0.0.1'den K3s master IP'sine güncelleyin.
-          # Koşucu K3s master'ının haricinde olduğu için bu çok önemlidir.
-          # sed komutlarının başarısını kontrol edin ve loglayın.
-          if sed -i "s/server: https:\/\/127.0.0.1:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config; then
-            echo "Kubeconfig server adresi 127.0.0.1'den 192.168.0.60'a güncellendi."
-          elif sed -i "s/server: https:\/\/localhost:6443/server: https:\/\/192.168.0.60:6443/g" ~/.kube/config; then
-            echo "Kubeconfig server adresi localhost'tan 192.168.0.60'a güncellendi."
-          else
-            echo "UYARI: Kubeconfig dosyasında 127.0.0.1 veya localhost sunucu adresi bulunamadı/güncellenemedi. Kubeconfig dosyası zaten doğru IP'yi içeriyor olabilir veya manuel müdahale gerekebilir."
-          fi
-
-          # Hata ayıklama çıktısı: Kubeconfig'in bazı kısımlarını yazdır (hassas verileri gizleyerek)
-          echo "--- Kubeconfig dosyası oluşturuldu ve güncellendi ---"
-          cat ~/.kube/config | grep -v "client-certificate-data\|client-key-data\|certificate-authority-data" || true
-          echo "-----------------------------------------"
-      # --- KUBECONFIG ADIMININ SONU ---
+      # Kubeconfig'in koşucuya çekilmesi adımına artık gerek yok.
+      # Kubeconfig dosyasının K3s master düğümünde (192.168.0.60 IP'li sunucuda) /home/mustafa/kubeconfig konumunda
+      # var olduğundan ve doğru izinlerle yapılandırıldığından emin olun.
+      # Bu dosyanın oluşturulması ve güncellenmesi Ansible Playbook'un ilk görevinde yapılacaktır.
 
       - name: Create Ansible Inventory File on Runner # Ansible envanter dosyasını koşucu üzerinde oluştur
         run: |
@@ -197,8 +167,10 @@ jobs:
           
           # printf kullanarak envanter dosyasını kontrollü bir şekilde yaz.
           # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa', 'root', 'ubuntu' vb.)
+          # ansible_env değişkeni ile KUBECONFIG yolu burada ayarlanıyor.
           printf "[k3s_cluster]\n" > ansible/k3s-cluster.ini
-          printf "192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n" >> ansible/k3s-cluster.ini
+          printf "192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem \\\n" >> ansible/k3s-cluster.ini
+          printf "  ansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'\n" >> ansible/k3s-cluster.ini # KUBECONFIG ENV DEĞİŞKENİ EKLEMESİ
           
           # Oluşturulan dosyayı doğrula ve loglara yaz (hata ayıklama için çok önemli)
           echo "--- Content of newly created k3s-cluster.ini ---"
