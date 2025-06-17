@@ -165,14 +165,14 @@ jobs:
           mkdir -p ansible # Eğer silinmişse tekrar oluştur (emin olmak için)
           rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
           
-          # printf kullanarak envanter dosyasını tek bir multiline string olarak yaz.
+          # cat <<EOF yöntemi, çok satırlı stringleri daha güvenli bir şekilde dosyaya yazmak için kullanılır.
           # Bu, YAML ayrıştırma hatalarını önler.
-          # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa', 'root', 'ubuntu' vb.)
-          # ansible_env değişkeni ile KUBECONFIG yolu burada ayarlanıyor.
-          printf "%s\n" "[k3s_cluster]" \
-            "192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem" \
-            "  ansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'" \
-            >> ansible/k3s-cluster.ini
+          # EOF işareti, 'run:' anahtar kelimesiyle aynı sütunda (ilk karakteri) hizalanmalıdır.
+          cat <<EOF > ansible/k3s-cluster.ini
+          [k3s_cluster]
+192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem
+ansible_env='{"KUBECONFIG":"/home/mustafa/kubeconfig"}'
+EOF
           
           # Oluşturulan dosyayı doğrula ve loglara yaz (hata ayıklama için çok önemli)
           echo "--- Content of newly created k3s-cluster.ini ---"
