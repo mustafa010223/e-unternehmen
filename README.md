@@ -1,1 +1,1 @@
-
+selam deneme amacli yazildi
