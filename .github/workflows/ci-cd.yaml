@@ -165,14 +165,12 @@ jobs:
           mkdir -p ansible # Eğer silinmişse tekrar oluştur (emin olmak için)
           rm -f ansible/k3s-cluster.ini # Eski dosyayı temizle
           
-          # cat <<EOF yöntemi, çok satırlı stringleri daha güvenli bir şekilde dosyaya yazmak için kullanılır.
-          # Bu, YAML ayrıştırma hatalarını önler.
-          # EOF işareti, 'run:' anahtar kelimesiyle aynı sütunda (ilk karakteri) hizalanmalıdır.
-          cat <<EOF > ansible/k3s-cluster.ini
-          [k3s_cluster]
-192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem
-ansible_env='{"KUBECONFIG":"/home/mustafa/kubeconfig"}'
-EOF
+          # Envanter dosyasının içeriğini doğrudan shell değişkenine atayıp sonra dosyaya yazma.
+          # Bu yöntem YAML ayrıştırma hatalarını daha iyi önler.
+          # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa', 'root', 'ubuntu' vb.)
+          # ansible_env değişkeni ile KUBECONFIG yolu burada ayarlanıyor.
+          INVENTORY_CONTENT="[k3s_cluster]\n192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'"
+          echo "$INVENTORY_CONTENT" > ansible/k3s-cluster.ini
           
           # Oluşturulan dosyayı doğrula ve loglara yaz (hata ayıklama için çok önemli)
           echo "--- Content of newly created k3s-cluster.ini ---"
@@ -205,7 +203,7 @@ EOF
           echo "Contents of ansible/k3s-cluster.ini:"
           cat ansible/k3s-cluster.ini # Envanter dosyasının içeriğini göster
           echo "Ansible Inventory List (should show k8s_cluster and master host):"
-          ansible-inventory -i ansible/k3s-cluster.ini --list # Ansible'ın envanteri nasıl gördüğünü göster
+          ansible-inventory -i ansible/k3s-cluster.ini --list # Ansible'ın envanteri nasıl gördüğünü gördüğünüze emin olun
           echo "Testing SSH connectivity to master (192.168.0.60):"
           # SSH bağlantısını test et (StrictHostKeyChecking=no ve UserKnownHostsFile=/dev/null ile ilk bağlantı hatalarını önle)
           ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 'echo Connected && exit' || echo "SSH connection to 192.168.0.60 failed."
