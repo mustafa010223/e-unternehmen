@@ -1,7 +1,9 @@
-# helm/myapp/values.yaml
+# ===========================================================
+# ==             ANA HELM DEĞERLERİ DOSYASI                  ==
+# ===========================================================
 
 # Genel Uygulama Ayarları
-replicaCount: 1 # Varsayılan olarak tüm uygulamalar için tek replika
+replicaCount: 1
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -9,259 +11,120 @@ fullnameOverride: ""
 serviceAccount:
   create: true
   annotations: {}
-  name: "" # Eğer isim belirtilmezse Helm varsayılan bir isim oluşturur
+  name: ""
 
-podSecurityContext: # Pod düzeyinde güvenlik bağlamı
-  runAsNonRoot: true # Pod içindeki tüm container'ları kök olmayan bir kullanıcı olarak çalıştır
-  # fsGroup: 1000 # Eğer dosya sistemi izinleri gerekiyorsa bu satırı etkinleştirin
-                  # Uygulamanızın ve imajınızın beklediği GID'ye göre ayarlayın
-securityContext: # Container düzeyinde güvenlik bağlamı
-  allowPrivilegeEscalation: false # Kapsayıcının ayrıcalık yükseltmesine izin verme
-  readOnlyRootFilesystem: true # Kapsayıcının kök dosya sistemini salt okunur yap
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities:
     drop:
-      - ALL # Tüm Linux özelliklerini bırak (güvenlik için iyi)
-  runAsNonRoot: true # Kapsayıcıyı kök olmayan bir kullanıcı olarak çalıştır
-  runAsUser: 999 # Burası DÜZELTİLDİ: MongoDB için genellikle 999 UID'si kullanılır.
-                  # Lütfen kullandığınız imajın varsayılan kullanıcısının UID'sini KONTROL EDİN.
+      - ALL
+  runAsNonRoot: true
+  runAsUser: 1001
 
----
-
+# --------------------------------------------------------------------------
 # Frontend Ayarları
 frontend:
   name: frontend
-  replicaCount: 1 # Frontend için replika sayısı
+  replicaCount: 1
   image:
     repository: meyfcsalik/frontend
-    pullPolicy: IfNotPresent # İmaj daha önce çekilmemişse veya 'latest' ise çek
-    tag: "" # CI/CD pipeline'ından --set ile override edilecek. Buraya varsayılan bir değer GİRMEYİN.
+    pullPolicy: IfNotPresent
+    tag: "" # CI/CD'den gelecek
   service:
-    type: NodePort # Dışarıdan erişim için NodePort kullanılıyor
-    port: 80 # Service portu
-    targetPort: 80 # Container'ın dinlediği port (sayısal)
-    nodePort: 30081 # NodePort için kullanılacak port (30000-32767 aralığında olmalı)
-  resources: {} # Kaynak limitleri ve istekleri (CPU/Bellek)
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 50m
-    #   memory: 64Mi
-  livenessProbe: # Uygulamanın canlı olup olmadığını kontrol eder
+    type: ClusterIP # Ingress kullanacağımız için ClusterIP daha iyidir
+    port: 80
+    targetPort: 80
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  livenessProbe:
     httpGet:
-      path: / # Frontend uygulamanızın sağlık kontrolü endpoint'i
-      port: 80 # Container'ın HTTP dinlediği port
+      path: /
+      port: 80
     initialDelaySeconds: 15
     periodSeconds: 20
-    timeoutSeconds: 5 # Eklendi: Problar için timeout süresi
-    failureThreshold: 3 # Eklendi: Kaç başarısız denemeden sonra pod'un restart edileceği
-  readinessProbe: # Uygulamanın gelen isteklere hazır olup olmadığını kontrol eder
+  readinessProbe:
     httpGet:
-      path: / # Frontend uygulamanızın sağlık kontrolü endpoint'i
-      port: 80 # Container'ın HTTP dinlediği port
+      path: /
+      port: 80
     initialDelaySeconds: 5
     periodSeconds: 10
-    timeoutSeconds: 5 # Eklendi: Problar için timeout süresi
-    failureThreshold: 3 # Eklendi: Kaç başarısız denemeden sonra pod'un hazır olmadığı kabul edileceği
-  podAnnotations: # Prometheus'un bu pod'dan metrikleri çekmesi için anotasyonlar
-    prometheus.io/scrape: "true" # Prometheus'un bu pod'u taramasını sağlar
-    prometheus.io/port: "80" # Frontend uygulamasının metrik sunduğu port (genellikle HTTP portu ile aynı olabilir, eğer /metrics oradan sunuluyorsa)
-    prometheus.io/path: "/metrics" # Frontend uygulamasının metrik sunduğu yol.
-                                    # Eğer frontend uygulamanızda Prometheus metrikleri yoksa, bu anotasyonları kaldırın veya ServiceMonitor'ı devre dışı bırakın.
 
----
-
+# --------------------------------------------------------------------------
 # Backend Ayarları
 backend:
   name: backend
-  replicaCount: 1 # Backend için replika sayısı
+  replicaCount: 1
   image:
     repository: meyfcsalik/backend
     pullPolicy: IfNotPresent
-    tag: "" # CI/CD pipeline'ından --set ile override edilecek. Buraya varsayılan bir değer GİRMEYİN.
+    tag: "" # CI/CD'den gelecek
   service:
-    type: ClusterIP # Küme içi erişim için ClusterIP
-    port: 5000 # Service portu
-    targetPort: 5000 # Container'ın dinlediği port (sayısal)
-  env: # Backend için ortam değişkenleri
-    # MongoDB bağlantı URL'i güncellendi:
-    # Helm'de "fullname" helper'ı kullanılırsa, servis adı otomatik oluşturulur.
-    # Servis adı genellikle <release-name>-<component-name> şeklinde olur.
-    # Bu durumda "myapp-mongodb:27017" doğru olacaktır.
-    MONGO_URL: "mongodb://{{ include "my-app.fullname" . }}-{{ .Values.mongodb.name }}:27017/my-app_default"
-    NODE_ENV: "development" # Geliştirme ortamı modu
-  resources: {}
-    # limits:
-    #   memory: "256Mi"
-    #   cpu: "200m"
-    # requests:
-    #   memory: "128Mi"
-    #   cpu: "100m"
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+  env:
+    MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_default"
+    NODE_ENV: "development"
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
   livenessProbe:
     httpGet:
-      path: /api/health # Backend uygulamanızın sağlık kontrolü endpoint'i
-      port: 5000 # Container'ın HTTP dinlediği port
+      path: /api/health
+      port: 5000
     initialDelaySeconds: 30
     periodSeconds: 15
-    timeoutSeconds: 5 # Eklendi
-    failureThreshold: 3 # Eklendi
   readinessProbe:
     httpGet:
-      path: /api/health # Backend uygulamanızın sağlık kontrolü endpoint'i
-      port: 5000 # Container'ın HTTP dinlediği port
+      path: /api/health
+      port: 5000
     initialDelaySeconds: 10
     periodSeconds: 5
-    timeoutSeconds: 5 # Eklendi
-    failureThreshold: 3 # Eklendi
-  podAnnotations: # Prometheus'un bu pod'dan metrikleri çekmesi için anotasyonlar
-    prometheus.io/scrape: "true" # Prometheus'un bu pod'u taramasını sağlar
-    prometheus.io/port: "5000" # Backend uygulamasının metrik sunduğu port
-    prometheus.io/path: "/metrics" # Backend uygulamasının metrik sunduğu yol.
-                                    # Backend uygulamanızın bu yolda metrikleri sunduğundan emin olun.
 
----
-
+# --------------------------------------------------------------------------
 # MongoDB Ayarları
 mongodb:
   name: mongodb
-  replicaCount: 1 # MongoDB için tek replika (üretimde daha fazla olmalı)
   image:
     repository: mongo
-    pullPolicy: IfNotPresent
-    tag: "6.0" # MongoDB imaj versiyonu
+    tag: "6.0"
   service:
-    # StatefulSet kullanılıyorsa, headless service için serviceName alanı ile eşleşmeli.
-    # Normal bir ClusterIP servisi için sadece 'name' yeterlidir.
-    name: "{{ include "my-app.fullname" . }}-{{ .Values.mongodb.name }}" # Helm fullname helper kullanıldı
-    type: ClusterIP # Genellikle küme içi erişim için ClusterIP
-    # clusterIP: None # Eğer bu bir Headless Service ise (StatefulSet serviceName için) bu satırı etkinleştirin.
-                     # Tek replikalı MongoDB için genellikle bu gerekli değildir.
-    port: 27017 # MongoDB'nin varsayılan portu
-  auth:
-    enabled: true # MongoDB kimlik doğrulamasını etkinleştirin (Güvenlik için çok önemli!)
-    # existingSecret: "" # Eğer önceden var olan bir secret kullanmak isterseniz adını buraya yazın
-    # Yeni Secret oluşturulacaksa kullanılacak değerler (templates/secret-mongodb.yaml bunları kullanır)
-    # rootPassword: "" # CI/CD secrets'tan gelmesi en iyisidir. `ansible-playbook` ile --set veya values.yaml'a gömülü olarak verilebilir.
-    #                   # Eğer boş bırakılırsa ve templates/secret-mongodb.yaml rastgele oluşturuyorsa o şekilde kalabilir.
-    usernameKey: "mongodb-root-username" # Secret içindeki kullanıcı adı key'i
-    passwordKey: "mongodb-root-password" # Secret içindeki parola key'i
-  
-  # Persistence (Veri Kalıcılığı) Ayarları
+    name: "mongodb" # Bu, backend MONGO_URL'i ile tutarlı olmalı
+    type: ClusterIP
+    port: 27017
   persistence:
-    enabled: true # Verilerin kalıcı olması için PVC oluşturmayı etkinleştirir
-    accessModes:
-      - ReadWriteOnce
-    size: 1Gi # PV boyutu
-    storageClass: "" # Eğer belirli bir StorageClass kullanmıyorsanız boş bırakın veya cluster'ınızın varsayılanını kullanın
-    # annotations: {}
-
-  resources: {}
-    # limits:
-    #   memory: "512Mi"
-    #   cpu: "500m"
-    # requests:
-    #   memory: "256Mi"
-    #   cpu: "250m"
-
-  # Problar (Sağlık Kontrolleri)
-  livenessProbe:
-    tcpSocket:
-      port: 27017 # MongoDB'nin dinlediği port (sayısal)
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 6
-  readinessProbe:
-    exec:
-      command:
-        - mongosh # mongo yerine mongosh kullanıldı (MongoDB 5.0+ için)
-        - --eval
-        - "db.adminCommand('ping')"
-        - --quiet # Eklendi: çıktıyı susturur, sadece exit kodu önemli
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 5
-    successThreshold: 1
-    failureThreshold: 6
-
----
-
+    enabled: true
+    size: 1Gi
+    
+# --------------------------------------------------------------------------
 # Ingress Ayarları
 ingress:
-  enabled: true # Burası DÜZELTİLDİ: Ingress'i etkinleştirir
-  className: nginx # Kullandığınız Ingress Controller'ın sınıf adını buraya yazın (örn: nginx, traefik)
-  annotations: {} # Özel Ingress Controller anotasyonları buraya eklenebilir
-    # kubernetes.io/ingress.class: nginx
-    # nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  enabled: false # Varsayılan olarak kapalı, production'da açılacak
+  className: nginx
   hosts:
-    - host: app.mustafasalik.de # Buraya kendi domain adınızı yazın
+    - host: my-app.local # Varsayılan host
       paths:
         - path: /
-          pathType: Prefix # veya Exact
-  tls: [] # TLS/SSL sertifikaları için. Eğer HTTPS kullanacaksanız burayı doldurun.
-    # - secretName: myapp-tls-secret # Sertifikanızın bulunduğu Kubernetes Secret adı
-    #   hosts:
-    #     - app.mustafasalik.de
+          pathType: Prefix
 
----
-
+# --------------------------------------------------------------------------
 # Monitoring (kube-prometheus-stack) Ayarları
 monitoring:
-  enabled: true # Kube-Prometheus-Stack'i etkinleştirir. (Chart.yaml'deki 'condition' ile uyumlu)
+  enabled: false # Varsayılan olarak kapalı, staging/prod'da açılacak
   kube-prometheus-stack:
-    # Kurulumun hangi namespace'e yapılacağı (varsayılan 'monitoring' tavsiye edilir)
-    namespace: monitoring 
-    
-    # Grafana Ayarları
     grafana:
-      enabled: true # Grafana'yı etkinleştirir
-      service:
-        type: NodePort # Grafana'ya dışarıdan erişim için NodePort
-        port: 80 # Service portu
-        nodePort: 30000 # Grafana için NodePort (30000-32767 aralığında olmalı)
-      adminPassword: "" # **Çok Önemli:** Bu değer CI/CD secret'larınızdan (--set ile) GELMELİDİR!
-                        # Örnek: `ansible-playbook ... --extra-vars "grafana_password=YOUR_SECRET_PASS"`
-                        # ve Helm komutunuzda `--set grafana.adminPassword={{ grafana_password }}` gibi geçirin.
-      # Otomatik Veri Kaynağı Yapılandırması: Prometheus'u Grafana'ya ekler
-      # Bu kısım, prometheus-community/kube-prometheus-stack chart'ının kendi içindeki Grafana kurulumu için geçerlidir.
-      defaultDashboards: true # Varsayılan Grafana dashboard'larını etkinleştir (Kubernetes ve Prometheus için)
-      additionalDataSources:
-        - name: Prometheus
-          type: prometheus
-          url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090 # Prometheus servisi URL'i
-          # Bu URL, kube-prometheus-stack'in kurulu olduğu namespace'e (burada monitoring) ve release ismine göre değişir.
-          # Varsayılan release adı 'kube-prometheus-stack' ise, bu URL doğru olacaktır.
-          access: proxy
-          isDefault: true
-      # Özel Dashboard'lar eklemek için:
-      # sidecar:
-      #   dashboards:
-      #     enabled: true
-      #     label: grafana_dashboard
-      # dashboardsConfigMaps:
-      #   default:
-      #     frontend-dashboard: |
-      #       # Buraya frontend dashboard'unuzun JSON içeriği gelecek
-      #     backend-dashboard: |
-      #       # Buraya backend dashboard'unuzun JSON içeriği gelecek
-
-    # Prometheus Ayarları
-    prometheus:
-      enabled: true # Prometheus'u etkinleştirir
-      prometheusSpec:
-        # ServiceMonitor/PodMonitor seçicileri:
-        # Eğer bu değerler 'false' ise, Prometheus Operator Helm tarafından tanımlanan ServiceMonitor'ları
-        # veya PodMonitor'ları dikkate alır. Uygulamanızın ServiceMonitor'larını kendi chart'ınıza
-        # eklediğiniz için bu değerleri 'false' bırakmak genellikle doğrudur.
-        podMonitorSelectorNilUsesHelmValues: false
-        serviceMonitorSelectorNilUsesHelmValues: false
-        ruleSelectorNilUsesHelmValues: false
-        
-        retention: "15d" # Metriklerin ne kadar süre saklanacağı
-        # resources: {} # Prometheus pod'ları için kaynak limitleri
-        #   limits:
-        #     cpu: 500m
-        #     memory: 1Gi
-        #   requests:
-        #     cpu: 250m
-        #     memory: 512Mi
+      adminPassword: "CHANGEME" # CI/CD'den güvenli bir şekilde gelmeli

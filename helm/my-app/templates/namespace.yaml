@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  # Not: release_namespace Helm'in içinde doğrudan bir değişken değildir.
+  # Bu yüzden bu değeri values.yaml'dan alacağız.
+  name: {{ .Values.namespace }}
+  labels:
+    # Pod Güvenlik Standardı etiketi burada tanımlanıyor.
+    pod-security.kubernetes.io/enforce: baseline
+    # Diğer standart etiketler
+    {{- include "my-app.labels" . | nindent 4 }}
