@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: {{ include "my-app.fullname" . }}-frontend
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    {{- include "my-app.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ .Values.frontend.name }}
 spec:
   type: {{ .Values.frontend.service.type }}
