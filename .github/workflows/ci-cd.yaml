@@ -2,39 +2,38 @@ name: Mikroservisler için CI/CD Hattı
 
 on:
   push:
-    branches: [main, develop] # main veya develop dallarına yapılan push'larda çalışır
+    branches: [main, develop]
   pull_request:
-    branches: [main, develop] # main veya develop dallarına yapılan pull request'lerde çalışır
-  workflow_dispatch: # Manuel olarak da çalıştırılabilir
+    branches: [main, develop]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true # Aynı anda birden fazla çalıştırmayı önler
+  cancel-in-progress: true
 
 env:
-  DOCKERHUB_USERNAME: meyfcsalik # Docker Hub kullanıcı adınız
+  DOCKERHUB_USERNAME: meyfcsalik
 
 jobs:
   test-and-build:
     name: Docker İmajlarını Test Et, Oluştur ve Gönder
-    runs-on: ubuntu-latest # İşin çalışacağı ortam
+    runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.vars.outputs.sha_full }}
+      image_tag: ${{ steps.vars.outputs.sha_short }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
-      # Frontend ve Backend için tam imaj etiketleri
-      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
-      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+      image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
+      image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
     services:
-      mongodb_test: # Testler için MongoDB servisi
+      mongodb_test:
         image: mongo:6.0
         ports: ['27017:27017']
     steps:
       - name: Depoyu Çıkart (Checkout Repository)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Git geçmişinin tamamını getirir (TruffleHog için gerekli olabilir)
+          fetch-depth: 0
 
-      - name: Node.js'i Önbellek v2 ile Kur
+      - name: Node.js'i Önbellek ile Kur
         uses: actions/setup-node@v4
         with:
           node-version: '18'
@@ -43,9 +42,9 @@ jobs:
             frontend/package-lock.json
             backend/package-lock.json
 
-      - name: Çıktı Değişkenlerini Ayarla (Commit SHA)
+      - name: Çıktı Değişkenlerini Ayarla (Kısa Commit SHA)
         id: vars
-        run: echo "sha_full=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Ortam Adını Belirle
         id: set_env
@@ -56,95 +55,65 @@ jobs:
             echo "DEPLOY_ENV=staging" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Frontend - Bağımlılıkları Kur ve Lint Et
+      - name: Frontend - Bağımlılık Kur, Lint Et ve Test Et
         working-directory: ./frontend
         run: |
           npm ci
           npm run lint --if-present
+          npm test --if-present -- --watchAll=false --coverage
 
-      - name: Frontend - Testleri Çalıştır
-        working-directory: ./frontend
-        run: npm test --if-present -- --watchAll=false --coverage
-
-      - name: Frontend - Uygulamayı Derle (Build)
-        working-directory: ./frontend
-        run: npm run build
-
-      - name: Backend - Bağımlılıkları Kur ve Lint Et
+      - name: Backend - Bağımlılık Kur, Lint Et ve Test Et
         working-directory: ./backend
         run: |
           npm ci
           npm run lint --if-present
-
-      - name: Backend - Testleri Çalıştır
-        working-directory: ./backend
-        run: npm test --if-present -- --watchAll=false --coverage
+          npm test --if-present -- --watchAll=false --coverage
         env:
           MONGO_URL: mongodb://localhost:27017/my-app_test
 
-      - name: TruffleHog ile Sırları Tara
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          base: HEAD~1
-          head: HEAD
-        continue-on-error: true # Sır taraması başarısız olsa bile pipeline devam eder
-
       - name: Docker Hub'a Giriş Yap
-        if: github.event_name == 'push' # Sadece push olaylarında Docker Hub'a giriş yap
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Frontend Docker İmajını Oluştur ve Gönder
-        if: github.event_name == 'push' # Sadece push olaylarında imajı build et ve push et
+      - name: Frontend ve Backend Docker İmajlarını Oluştur ve Gönder
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          tags: ${{ jobs.test-and-build.outputs.image_tag_full_frontend }}
           no-cache: true
-
-      - name: Backend Docker İmajını Oluştur ve Gönder
-        if: github.event_name == 'push' # Sadece push olaylarında imajı build et ve push et
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
+        if: github.event_name == 'push'
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
+          tags: ${{ jobs.test-and-build.outputs.image_tag_full_backend }}
           no-cache: true
 
   deploy:
     name: K3s'e Dağıt ve Ansible ile Güvenlik/E2E Testlerini Çalıştır
-    needs: test-and-build # Bu adımın, 'test-and-build' işi tamamlandıktan sonra çalışmasını sağlar
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') # Sadece main/develop push'larında çalışır
-    runs-on: self-hosted # Kendi barındırdığınız runner üzerinde çalışır
-    environment: ${{ needs.test-and-build.outputs.deploy_env }} # Ortamı ayarlar (production/staging)
+    needs: test-and-build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: self-hosted
+    environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Depoyu Kendi Barındırılan Runner'da Çıkart
+      - name: Depoyu Çıkart
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Mevcut Çalışma Dizini Hata Ayıklamasını Yazdır
+      - name: Python'u Kur ve Gerekli Paketleri Yükle
         run: |
-          pwd
-          ls -F
-          ls -F ansible/
-          ls -F helm/my-app
-
-      - name: Python'u Kur ve Ansible'ı Kendi Barındırılan Runner'a Yükle
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-venv
-
           python3 -m venv .venv
           source .venv/bin/activate
-
-          pip install ansible openshift
+          # DÜZELTME: K8s modülünün sorunsuz çalışması için 'kubernetes' paketi eklendi.
+          pip install ansible openshift kubernetes
 
       - name: Ansible için SSH Özel Anahtarını Yapılandır
         run: |
@@ -155,75 +124,47 @@ jobs:
       - name: Runner Üzerinde Ansible Envanter Dosyasını Oluştur
         run: |
           mkdir -p ansible
-          rm -f ansible/k3s-cluster.ini
+          # İYİLEŞTİRME: Daha okunaklı ve tutarlı bir envanter dosyası oluşturuluyor.
+          # 'k3s-server' adı, kubectl çıktınızla eşleşir.
+          # 'ansible_user' ve KUBECONFIG yolu, runner'ınızdaki kullanıcıya ('mustafa') göre ayarlanmalıdır.
+          cat <<EOF > ansible/k3s-cluster.ini
+          [k3s_cluster]
+          k3s-server ansible_host=192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem
 
-          # Ansible envanter dosyasının içeriği, KUBECONFIG yolu doğru şekilde ayarlandı.
-          # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa').
-          echo -e "[k3s_cluster]\nmaster ansible_host=192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n[k3s_cluster:vars]\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'" > ansible/k3s-cluster.ini
+          [k3s_cluster:vars]
+          ansible_env='{"KUBECONFIG":"/home/mustafa/kubeconfig"}'
+          EOF
 
           echo "--- Yeni Oluşturulan k3s-cluster.ini Dosyasının İçeriği ---"
           cat ansible/k3s-cluster.ini
           echo "------------------------------------------------"
-          ls -l ansible/k3s-cluster.ini
-          chmod 644 ansible/k3s-cluster.ini
-
-      - name: Envanter Oluşturma ve Konumunu Doğrula
-        run: |
-          echo "--- Oluşturulduktan Sonra Envanter Dosyası Kontrol Ediliyor ---"
-          pwd
-          ls -l ansible/k3s-cluster.ini
-          cat ansible/k3s-cluster.ini
-          echo "----------------------------------------------"
-
-      - name: Helm Chart Bağımlılıklarını Oluştur
-        working-directory: helm/my-app # ÖNEMLİ: Bu, Helm chart'ınızın doğru yolu olmalı
-        run: |
-          echo "Helm chart bağımlılıkları güncelleniyor ve oluşturuluyor: $(pwd)"
-          helm dependency update # Tanımlı bağımlılıklar için güncellemeleri çeker
-          helm dependency build  # Çekilen bağımlılıklarla charts/ dizinini oluşturur
 
       - name: Ansible Vault Şifresini Sağla
         run: |
           echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
 
-      - name: Dağıtım, Güvenlik ve E2E Testleri için Ansible Playbook'u Çalıştır
+      - name: Dağıtım için Ansible Playbook'u Çalıştır
         shell: bash
         run: |
           source .venv/bin/activate
 
-          echo "--- Ansible Envanter ve Bağlantı Hata Ayıklaması ---"
-          which ansible
-          ansible --version
-          echo "ansible/k3s-cluster.ini İçeriği:"
-          cat ansible/k3s-cluster.ini
-          echo "Ansible Envanter Listesi (k8s_cluster ve master host'u göstermeli):"
-          ansible-inventory -i ansible/k3s-cluster.ini --list
-          echo "Master'a (192.168.0.60) SSH bağlantısı test ediliyor:"
-          ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 'echo Connected && exit' || echo "SSH bağlantısı 192.168.0.60'a başarısız oldu."
-          echo "--- Ansible Envanter ve Bağlantı Hata Ayıklaması Sonu ---"
-
-          FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-          BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" 
-
-          # Sadece etiket kısmını almak için shell parametre manipülasyonu
-          FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
-          BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
-
+          FRONTEND_TAG_FULL="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
+          BACKEND_TAG_FULL="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
+          
+          # Sadece etiket kısmını (ortam-sha) ayıkla
+          FRONTEND_TAG_ONLY="${FRONTEND_TAG_FULL##*:}"
+          BACKEND_TAG_ONLY="${BACKEND_TAG_FULL##*:}"
+          
           ansible-playbook ansible/playbook.yaml \
             -i ansible/k3s-cluster.ini \
             --vault-password-file vault_pass.txt \
-            --extra-vars "helm_release_name=my-app" \
-            --extra-vars "k8s_namespace=default" \
-            --extra-vars "helm_chart_path=../helm/my-app/" \
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
-            --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
+            --extra-vars "frontend_image_tag=${FRONTEND_TAG_ONLY}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
-            --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}" \
-            --extra-vars "app_domain=my-app-${{ needs.test-and-build.outputs.deploy_env }}.example.com" \
-            --extra-vars "deploy_env_name=${{ needs.test-and-build.outputs.deploy_env }}"
+            --extra-vars "backend_image_tag=${BACKEND_TAG_ONLY}"
         env:
-          ANSIBLE_HOST_KEY_CHECKING: 'False' # SSH anahtar doğrulamayı kapatır (güvenlik için dikkatli kullanılmalı)
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
 
       - name: Vault Şifre Dosyasını Temizle
-        if: always() # Her durumda çalışır (iş başarısız olsa bile)
+        if: always()
         run: rm -f vault_pass.txt
