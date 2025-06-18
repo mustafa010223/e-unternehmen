@@ -1,13 +1,11 @@
 ---
 - name: Helm ile Kubernetes Dağıtım ve Güvenlik Denetimi
-  hosts: k3s_cluster # Ansible envanter dosyasındaki 'k3s_cluster' grubundaki sunucularda çalışır
-  become: true # Uzak sunucuda root yetkileriyle çalışır
+  hosts: k3s_cluster
+  become: true
 
   vars_files:
-    - secrets/secrets.yaml # Gizli verileri içeren bir dosyayı dahil eder (Ansible Vault ile şifrelenmeli)
+    - secrets/secrets.yaml
 
-  # Bu değişkenler, CI/CD'den --extra-vars ile değer gelmediğinde
-  # yerel çalıştırmalar için varsayılan değerler sağlar.
   vars:
     helm_release_name: "my-app"
     k8s_namespace: "default"
@@ -15,8 +13,8 @@
     frontend_image_tag: "latest"
     backend_image_repo: "meyfcsalik/backend"
     backend_image_tag: "latest"
-    playbook_dir: "{{ lookup('env', 'PWD') }}/ansible" # Playbook'un bulunduğu dizini dinamik olarak alır
-    critical_paths_k3s: # K3s'e özel kritik dizinler (varlık ve izin kontrolü için)
+    playbook_dir: "{{ lookup('env', 'PWD') }}/ansible"
+    critical_paths_k3s:
       - /etc/rancher/k3s/
       - /var/lib/rancher/k3s/server/
       - /var/lib/kubelet
@@ -24,11 +22,9 @@
   tasks:
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 1: Kubeconfig Dosyasını Ayarlama
-    # Bu blok, K3s'in kubeconfig dosyasını kullanıcı dizinine kopyalar
-    # ve sunucu IP adresini gerçek IP ile günceller.
     # --------------------------------------------------------------------------
     - name: Kubeconfig Dosyasını Ayarla ve Sunucu Adresini Güncelle
-      tags: kubeconfig_setup # Bu görev bloğunu etiketle
+      tags: kubeconfig_setup
       block:
         - name: Kullanıcı ev dizininin var olduğundan emin ol
           ansible.builtin.file:
@@ -38,8 +34,6 @@
             group: "{{ ansible_user }}"
             mode: '0755'
 
-        # DÜZELTME: Hatalı 'template' görevi yerine, çalışan ve daha basit olan
-        # 'copy' ve 'replace' adımları kullanılıyor.
         - name: Kubeconfig dosyasını /etc/rancher/k3s/k3s.yaml'dan kopyala
           ansible.builtin.copy:
             src: /etc/rancher/k3s/k3s.yaml
@@ -47,7 +41,7 @@
             owner: "{{ ansible_user }}"
             group: "{{ ansible_user }}"
             mode: '0600'
-            remote_src: yes # Kaynağın uzak sunucuda olduğunu belirtir
+            remote_src: yes
 
         - name: Kubeconfig sunucu adresini localhost'tan gerçek IP'ye güncelle
           ansible.builtin.replace:
@@ -73,6 +67,11 @@
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
         values:
+          # DÜZELTME: Bu bölüm, Chart.yaml'daki 'kube-prometheus-stack'
+          # bağımlılığını aktif hale getirmek için eklendi.
+          monitoring:
+            enable: true
+          
           frontend:
             image:
               repository: "{{ frontend_image_repo }}"
@@ -89,7 +88,6 @@
     - name: Güvenlik denetimlerini çalıştır
       tags: security
       block:
-        # İYİLEŞTİRME: Güvenlik denetimleri daha sağlam ve okunabilir hale getirildi.
         - name: Kritik K3s dizinlerinin varlığını doğrula
           ansible.builtin.stat:
             path: "{{ item }}"
@@ -107,8 +105,6 @@
           loop: "{{ critical_paths_k3s }}"
           register: insecure_files_check
           changed_when: false
-          # 'find' komutu aradığını bulamazsa 1 dönüş kodu verir, bu bir hata değildir.
-          # Sadece 1'den büyük dönüş kodlarında hata ver.
           failed_when: insecure_files_check.rc > 1
 
         - name: Güvensiz dosya izinleri varsa uyar ve başarısız ol
