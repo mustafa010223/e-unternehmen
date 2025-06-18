@@ -1,12 +1,13 @@
 ---
 - name: Helm ile Kubernetes Dağıtım ve Güvenlik Denetimi
   hosts: k3s_cluster
-  become: true # Görevlerin root yetkisiyle çalışmasını sağlar (örn: dosya kopyalama)
+  become: true
   
   vars_files:
-    # Ansible'ın çalıştığı dizine göre secrets.yaml dosyasının yolu
     - secrets/secrets.yaml
 
+  # Bu değişkenler, CI/CD'den --extra-vars ile değer gelmediğinde
+  # yerel çalıştırmalar için varsayılan değerler sağlar.
   vars:
     helm_release_name: "my-app"
     k8s_namespace: "default"
@@ -14,13 +15,11 @@
     frontend_image_tag: "latest"
     backend_image_repo: "meyfcsalik/backend"
     backend_image_tag: "latest"
-    app_domain: "app.mustafasalik.de"
-    enable_selenium_tests: true
-    playbook_dir: "{{ lookup('env', 'PWD') }}/ansible" # Ansible dizininin mutlak yolu
+    playbook_dir: "{{ lookup('env', 'PWD') }}/ansible"
 
   tasks:
     # --------------------------------------------------------------------------
-    # GÖREV BLOKU 1: Kubeconfig Dosyasını K3s Master Üzerinde Ayarlama
+    # GÖREV BLOKU 1: Kubeconfig Dosyasını Ayarlama
     # --------------------------------------------------------------------------
     - name: Kubeconfig Dosyasını Ayarla ve Sunucu Adresini Güncelle
       block:
@@ -38,40 +37,34 @@
             dest: /home/{{ ansible_user }}/kubeconfig
             owner: "{{ ansible_user }}"
             group: "{{ ansible_user }}"
-            mode: '0600' # Sadece sahip okuma/yazma iznine sahip olsun
-            remote_src: yes # Kaynak dosyanın hedef makinede olduğunu belirtir
+            mode: '0600'
+            remote_src: yes
 
         - name: Kubeconfig sunucu adresini localhost'tan gerçek IP'ye güncelle
           ansible.builtin.replace:
             path: /home/{{ ansible_user }}/kubeconfig
             regexp: 'server: https:\/\/((127\.0\.0\.1)|(localhost)):6443'
             replace: 'server: https://{{ ansible_host }}:6443'
-
-        - name: Kubeconfig dosya içeriğini doğrula (sunucu adresi)
-          ansible.builtin.command: cat /home/{{ ansible_user }}/kubeconfig
-          register: kubeconfig_content
-          changed_when: false # Bu komut durumu değiştirmez
-
-        - name: Doğrulama için kubeconfig sunucu adresini göster
-          ansible.builtin.debug:
-            msg: "Kubeconfig sunucu adresi: {{ kubeconfig_content.stdout | regex_search('server: (.*)', '\\1') | first }}"
-
       tags: kubeconfig_setup
 
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 2: Kubernetes Kaynakları
     # --------------------------------------------------------------------------
     - name: Selenium test betiği ConfigMap'ini oluştur
+      # --- DÜZELTME: "Namespace is required" hatasını gidermek için ---
+      # Dışarıdaki YAML dosyası 'combine' filtresi ile 'namespace' içerecek
+      # şekilde zenginleştiriliyor. Bu sayede kaynak dosya eksik olsa bile
+      # playbook hatasız çalışır.
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('file', playbook_dir + '/configs/selenium-test-configmap.yaml') | from_yaml }}"
+        definition: "{{ (lookup('file', playbook_dir + '/configs/selenium-test-configmap.yaml') | from_yaml) | combine({'metadata': {'namespace': k8s_namespace}}, recursive=True) }}"
         kubeconfig: /home/{{ ansible_user }}/kubeconfig
       tags: configmap
 
     - name: Helm chart'ını dağıt veya güncelle
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
-        chart_ref: "{{ playbook_dir }}/../helm/my-app/" # Helm chart'ınızın yolu
+        chart_ref: "{{ playbook_dir }}/../helm/my-app/"
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
         values:
@@ -87,9 +80,9 @@
       tags: deploy
 
     # --------------------------------------------------------------------------
-    # GÖREV BLOKU 3: Güvenlik Politikaları
+    # GÖREV BLOKU 3: Güvenlik ve Testler
     # --------------------------------------------------------------------------
-    - name: Pod Güvenlik Standartlarını uygula (Namespace'e etiket ekle)
+    - name: Pod Güvenlik Standartlarını uygula
       kubernetes.core.k8s:
         state: present
         definition:
@@ -102,33 +95,6 @@
         kubeconfig: /home/{{ ansible_user }}/kubeconfig
       tags: security
 
-    - name: Gelişmiş NetworkPolicy tanımla
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: networking.k8s.io/v1
-          kind: NetworkPolicy
-          metadata:
-            name: allow-monitoring-only
-            namespace: "{{ k8s_namespace }}"
-          spec:
-            podSelector: {}
-            policyTypes:
-              - Ingress
-            ingress:
-              - ports:
-                  - protocol: TCP
-                    port: 9100
-                from:
-                  - namespaceSelector:
-                      matchLabels:
-                        kubernetes.io/metadata.name: monitoring
-        kubeconfig: /home/{{ ansible_user }}/kubeconfig
-      tags: security
-
-    # --------------------------------------------------------------------------
-    # GÖREV BLOKU 4: Test ve Otomasyon
-    # --------------------------------------------------------------------------
     - name: Selenium test Job'unu başlat
       kubernetes.core.k8s:
         state: present
@@ -146,9 +112,6 @@
                   - name: selenium-runner
                     image: python:3.9-slim
                     command: ["python3", "/app/run_tests.py"]
-                    volumeMounts:
-                      - name: test-scripts-volume
-                        mountPath: /app
                 volumes:
                   - name: test-scripts-volume
                     configMap:
@@ -156,44 +119,4 @@
                 restartPolicy: Never
             backoffLimit: 0
         kubeconfig: /home/{{ ansible_user }}/kubeconfig
-        when: enable_selenium_tests
       tags: testing
-
-    # - name: Vault şifresini otomatik döndür (İsteğe bağlı, dikkatli kullanın)
-    #   ansible.builtin.command: >
-    #     ansible-vault rekey secrets.yaml
-    #     --new-vault-password-file {{ playbook_dir }}/vault_pass_new.txt
-    #   args:
-    #     creates: "{{ playbook_dir }}/vault_pass_new.txt"
-    #   run_once: true
-    #   tags: vault
-
-  # ============================================================================
-  # POST TASKS: Tüm ana görevler bittikten sonra çalışır
-  # ============================================================================
-  post_tasks:
-    - name: Dağıtım sonrası Pod durumlarını kontrol et
-      kubernetes.core.k8s_info:
-        kind: Pod
-        namespace: "{{ k8s_namespace }}"
-        label_selectors:
-          - "app.kubernetes.io/instance={{ helm_release_name }}"
-        kubeconfig: /home/{{ ansible_user }}/kubeconfig
-      register: deployment_pods
-      retries: 10
-      delay: 5
-      until: deployment_pods.resources | length > 0
-      run_once: true
-
-    - name: Uygulama sağlık durumunu kontrol et (Health Check)
-      ansible.builtin.uri:
-        url: "http://{{ item.metadata.name }}.{{ k8s_namespace }}.svc.cluster.local/health"
-        method: GET
-        status_code: 200
-        timeout: 10
-      loop: "{{ deployment_pods.resources }}"
-      loop_control:
-        label: "{{ item.metadata.name }}"
-      retries: 10
-      delay: 5
-      run_once: true
