@@ -64,17 +64,16 @@
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
         chart_ref: "{{ playbook_dir }}/../helm/my-app/"
-        release_namespace: "{{ k8s_namespace }}"
+        namespace: "{{ k8s_namespace }}" # DÜZELTME: 'release_namespace' yerine 'namespace' kullanıldı.
         create_namespace: yes
         values:
-          # NİHAİ DÜZELTME: Helm hatasını çözmek için tam mongodb yapılandırması
           mongodb:
             auth:
               enabled: false
               existingSecret: ""
-              rootPassword: "" # Auth false olduğu için boş kalabilir
+              rootPassword: ""
             persistence:
-              size: 1Gi # StatefulSet için gerekli olan depolama boyutu
+              size: 1Gi
             service:
               name: "mongodb"
               port: 27017
@@ -82,7 +81,6 @@
               repository: "mongo"
               tag: "6.0"
           
-          # Diğer servisler için değerler
           frontend:
             image:
               repository: "{{ frontend_image_repo }}"
