@@ -19,7 +19,6 @@ jobs:
     name: Test, Build and Push Docker Images
     runs-on: ubuntu-latest
     outputs:
-      # Bu çıktılar 'deploy' işi tarafından kullanılmak için doğrudur.
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
       image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
@@ -86,8 +85,6 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          # DÜZELTME: 'jobs.' yerine, aynı işteki önceki adımlardan gelen
-          # çıktılar kullanılarak etiket doğru şekilde oluşturuluyor.
           tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
           no-cache: true
 
@@ -98,8 +95,6 @@ jobs:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          # DÜZELTME: 'jobs.' yerine, aynı işteki önceki adımlardan gelen
-          # çıktılar kullanılarak etiket doğru şekilde oluşturuluyor.
           tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
           no-cache: true
 
@@ -143,25 +138,33 @@ jobs:
 
       - name: Provide Ansible Vault Password
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+      
+      # =========================================================================
+      # --- KRİTİK DÜZELTME: Bu adım Helm hatasını çözmek için eklenmiştir ---
+      # =========================================================================
+      - name: Helm Chart Bağımlılıklarını İndir
+        # Bu yolun, Chart.yaml dosyanızın bulunduğu dizin olduğundan emin olun.
+        working-directory: helm/my-app 
+        run: helm dependency build
 
       - name: Run Ansible Playbook for Deployment
         shell: bash
         run: |
           source .venv/bin/activate
           
-          FRONTEND_TAG_FULL="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
-          BACKEND_TAG_FULL="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
+          FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
+          BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
           
-          FRONTEND_TAG_ONLY="${FRONTEND_TAG_FULL##*:}"
-          BACKEND_TAG_ONLY="${BACKEND_TAG_FULL##*:}"
+          FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
+          BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
           
           ansible-playbook ansible/playbook.yaml \
             -i ansible/k3s-cluster.ini \
             --vault-password-file vault_pass.txt \
             --extra-vars "frontend_image_repo=${{ env.DOCKERHUB_USERNAME }}/frontend" \
-            --extra-vars "frontend_image_tag=${FRONTEND_TAG_ONLY}" \
+            --extra-vars "frontend_image_tag=${FRONTEND_ONLY_TAG}" \
             --extra-vars "backend_image_repo=${{ env.DOCKERHUB_USERNAME }}/backend" \
-            --extra-vars "backend_image_tag=${BACKEND_TAG_ONLY}"
+            --extra-vars "backend_image_tag=${BACKEND_ONLY_TAG}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
