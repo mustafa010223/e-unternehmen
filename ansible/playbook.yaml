@@ -49,6 +49,15 @@
             regexp: 'server: https:\/\/((127\.0\.0\.1)|(localhost)):6443'
             replace: 'server: https://{{ ansible_host }}:6443'
 
+    # --- NİHAİ DÜZELTME: Kubeconfig içinde varsayılan namespace'i ayarla ---
+    - name: Kubeconfig'de aktif context için namespace'i ayarla
+      tags: kubeconfig_setup
+      ansible.builtin.command:
+        cmd: "kubectl config set-context --current --namespace={{ k8s_namespace }}"
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/kubeconfig"
+    # --- Düzeltme sonu ---
+
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 2: Kubernetes Kaynakları (ConfigMap ve Helm Dağıtımı)
     # --------------------------------------------------------------------------
@@ -64,7 +73,7 @@
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
         chart_ref: "{{ playbook_dir }}/../helm/my-app/"
-        namespace: "{{ k8s_namespace }}" # DÜZELTME: 'release_namespace' yerine 'namespace' kullanıldı.
+        release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
         values:
           mongodb:
