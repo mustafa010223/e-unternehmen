@@ -157,9 +157,9 @@
       tags: testing
 
     - name: Vault şifreleme durumunu doğrula
-      # Ansible Vault ile şifrelenmiş secrets.yaml dosyasının içeriğini doğrulamaya çalışır.
+      # Ansible Vault ile şifrelenmiş secrets.yaml dosyasının içeriğini doğrulamaya çalışırız.
       # Bu görev, playbook'un çalıştığı makinede (localhost) çalışır.
       command: ansible-vault view secrets/secrets.yaml --vault-password-file=vault_pass.txt
       delegate_to: localhost
-      # Not: `secrets/secrets.yaml` yolu, ana playbook ile tutarlı olmalıdır.
+      # Not: `secrets/secrets.yaml` yolu, bu playbook'un çalıştığı ana dizine göre ayarlanmalıdır.
       # `vault_pass.txt` dosyasının da GitHub Actions iş akışından veya başka bir güvenli kaynaktan sağlanması gerekir.
