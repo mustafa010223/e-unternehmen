@@ -1,11 +1,13 @@
 ---
 - name: Helm ile Kubernetes Dağıtım ve Güvenlik Denetimi
-  hosts: k3s_cluster
-  become: true
+  hosts: k3s_cluster # Ansible envanter dosyasındaki 'k3s_cluster' grubundaki sunucularda çalışır
+  become: true # Uzak sunucuda root yetkileriyle çalışır
 
   vars_files:
-    - secrets/secrets.yaml
+    - secrets/secrets.yaml # Gizli verileri içeren bir dosyayı dahil eder (Ansible Vault ile şifrelenmeli)
 
+  # Bu değişkenler, CI/CD'den --extra-vars ile değer gelmediğinde
+  # yerel çalıştırmalar için varsayılan değerler sağlar.
   vars:
     helm_release_name: "my-app"
     k8s_namespace: "default"
@@ -13,8 +15,8 @@
     frontend_image_tag: "latest"
     backend_image_repo: "meyfcsalik/backend"
     backend_image_tag: "latest"
-    playbook_dir: "{{ lookup('env', 'PWD') }}/ansible"
-    critical_paths_k3s:
+    playbook_dir: "{{ lookup('env', 'PWD') }}/ansible" # Playbook'un bulunduğu dizini dinamik olarak alır
+    critical_paths_k3s: # K3s'e özel kritik dizinler (varlık ve izin kontrolü için)
       - /etc/rancher/k3s/
       - /var/lib/rancher/k3s/server/
       - /var/lib/kubelet
@@ -22,8 +24,11 @@
   tasks:
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 1: Kubeconfig Dosyasını Ayarlama
+    # Bu blok, K3s'in kubeconfig dosyasını kullanıcı dizinine kopyalar
+    # ve sunucu IP adresini gerçek IP ile günceller.
     # --------------------------------------------------------------------------
     - name: Kubeconfig Dosyasını Ayarla ve Sunucu Adresini Güncelle
+      tags: kubeconfig_setup # Bu görev bloğunu etiketle
       block:
         - name: Kullanıcı ev dizininin var olduğundan emin ol
           ansible.builtin.file:
@@ -33,26 +38,35 @@
             group: "{{ ansible_user }}"
             mode: '0755'
 
-        - name: Kubeconfig dosyasını kopyala ve IP'yi güncelle
-          ansible.builtin.template:
-            src: templates/kubeconfig.j2
+        # DÜZELTME: Hatalı 'template' görevi yerine, çalışan ve daha basit olan
+        # 'copy' ve 'replace' adımları kullanılıyor.
+        - name: Kubeconfig dosyasını /etc/rancher/k3s/k3s.yaml'dan kopyala
+          ansible.builtin.copy:
+            src: /etc/rancher/k3s/k3s.yaml
             dest: "/home/{{ ansible_user }}/kubeconfig"
             owner: "{{ ansible_user }}"
             group: "{{ ansible_user }}"
             mode: '0600'
-      tags: kubeconfig_setup
+            remote_src: yes # Kaynağın uzak sunucuda olduğunu belirtir
+
+        - name: Kubeconfig sunucu adresini localhost'tan gerçek IP'ye güncelle
+          ansible.builtin.replace:
+            path: "/home/{{ ansible_user }}/kubeconfig"
+            regexp: 'server: https:\/\/((127\.0\.0\.1)|(localhost)):6443'
+            replace: 'server: https://{{ ansible_host }}:6443'
 
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 2: Kubernetes Kaynakları (ConfigMap ve Helm Dağıtımı)
     # --------------------------------------------------------------------------
     - name: Selenium test betiği ConfigMap'ini oluştur
+      tags: configmap
       kubernetes.core.k8s:
         state: present
         definition: "{{ (lookup('file', playbook_dir + '/configs/selenium-test-configmap.yaml') | from_yaml) | combine({'metadata': {'namespace': k8s_namespace}}, recursive=True) }}"
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
-      tags: configmap
 
     - name: Helm chart'ını dağıt veya güncelle
+      tags: deploy
       kubernetes.core.helm:
         name: "{{ helm_release_name }}"
         chart_ref: "{{ playbook_dir }}/../helm/my-app/"
@@ -68,7 +82,6 @@
               repository: "{{ backend_image_repo }}"
               tag: "{{ backend_image_tag }}"
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
-      tags: deploy
 
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 3: Güvenlik Denetimleri
@@ -76,8 +89,8 @@
     - name: Güvenlik denetimlerini çalıştır
       tags: security
       block:
-        # DÜZELTME VE İYİLEŞTİRME: Güvenlik denetimleri daha sağlam ve okunabilir hale getirildi.
-        - name: Kritik K3s dizinlerinin varlığını ve izinlerini doğrula
+        # İYİLEŞTİRME: Güvenlik denetimleri daha sağlam ve okunabilir hale getirildi.
+        - name: Kritik K3s dizinlerinin varlığını doğrula
           ansible.builtin.stat:
             path: "{{ item }}"
           loop: "{{ critical_paths_k3s }}"
@@ -85,7 +98,7 @@
 
         - name: Eksik kritik K3s dizinleri varsa uyar ve başarısız ol
           ansible.builtin.fail:
-            msg: "GÜVENLİK RİSKİ: Kritik K3s dizini bulunamadı -> {{ item.item }}. K3s kurulumunuzu kontrol edin."
+            msg: "GÜVENLİK RİSKİ: Kritik K3s dizini bulunamadı -> {{ item.item }}"
           loop: "{{ k3s_dirs_check.results }}"
           when: not item.stat.exists
 
@@ -94,7 +107,9 @@
           loop: "{{ critical_paths_k3s }}"
           register: insecure_files_check
           changed_when: false
-          failed_when: insecure_files_check.rc > 1 # 'find' bulamazsa rc=1 döner, bu hata sayılmaz.
+          # 'find' komutu aradığını bulamazsa 1 dönüş kodu verir, bu bir hata değildir.
+          # Sadece 1'den büyük dönüş kodlarında hata ver.
+          failed_when: insecure_files_check.rc > 1
 
         - name: Güvensiz dosya izinleri varsa uyar ve başarısız ol
           ansible.builtin.fail:
@@ -106,6 +121,7 @@
     # GÖREV BLOKU 4: Kubernetes Güvenlik ve Testler
     # --------------------------------------------------------------------------
     - name: Pod Güvenlik Standartlarını uygula
+      tags: security
       kubernetes.core.k8s:
         state: present
         definition:
@@ -116,9 +132,9 @@
             labels:
               pod-security.kubernetes.io/enforce: baseline
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
-      tags: security
 
     - name: Selenium test Job'unu başlat
+      tags: testing
       kubernetes.core.k8s:
         state: present
         definition:
@@ -145,4 +161,3 @@
                 restartPolicy: Never
             backoffLimit: 0
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
-      tags: testing
