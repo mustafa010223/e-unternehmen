@@ -8,7 +8,7 @@
 
   vars:
     helm_release_name: "my-app"
-    k8s_namespace: "my-app-ns" # Namespace'i default yerine daha spesifik bir ad yapalım
+    k8s_namespace: "my-app-ns"
     frontend_image_repo: "meyfcsalik/frontend"
     frontend_image_tag: "latest"
     backend_image_repo: "meyfcsalik/backend"
@@ -49,15 +49,6 @@
             regexp: 'server: https:\/\/((127\.0\.0\.1)|(localhost)):6443'
             replace: 'server: https://{{ ansible_host }}:6443'
 
-    # --- NİHAİ DÜZELTME: Kubeconfig içinde varsayılan namespace'i ayarla ---
-    - name: Kubeconfig'de aktif context için namespace'i ayarla
-      tags: kubeconfig_setup
-      ansible.builtin.command:
-        cmd: "kubectl config set-context --current --namespace={{ k8s_namespace }}"
-      environment:
-        KUBECONFIG: "/home/{{ ansible_user }}/kubeconfig"
-    # --- Düzeltme sonu ---
-
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 2: Kubernetes Kaynakları (ConfigMap ve Helm Dağıtımı)
     # --------------------------------------------------------------------------
@@ -68,14 +59,12 @@
         definition: "{{ (lookup('file', playbook_dir + '/configs/selenium-test-configmap.yaml') | from_yaml) | combine({'metadata': {'namespace': k8s_namespace}}, recursive=True) }}"
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
 
-    - name: Helm chart'ını dağıt veya güncelle
+    # --- NİHAİ DÜZELTME: Sorunlu Helm modülü yerine doğrudan komut çalıştırma ---
+    - name: Helm için değerler dosyasını hedef sunucuda oluştur
       tags: deploy
-      kubernetes.core.helm:
-        name: "{{ helm_release_name }}"
-        chart_ref: "{{ playbook_dir }}/../helm/my-app/"
-        release_namespace: "{{ k8s_namespace }}"
-        create_namespace: yes
-        values:
+      ansible.builtin.copy:
+        dest: /tmp/my_app_values.yaml
+        content: |
           mongodb:
             auth:
               enabled: false
@@ -98,7 +87,21 @@
             image:
               repository: "{{ backend_image_repo }}"
               tag: "{{ backend_image_tag }}"
-        kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
+
+    - name: Helm chart'ını komut satırından dağıt veya güncelle
+      tags: deploy
+      ansible.builtin.shell:
+        cmd: >
+          helm upgrade --install {{ helm_release_name }}
+          "{{ playbook_dir }}/../helm/my-app/"
+          --namespace {{ k8s_namespace }}
+          --create-namespace
+          --values /tmp/my_app_values.yaml
+      environment:
+        KUBECONFIG: "/home/{{ ansible_user }}/kubeconfig"
+      register: helm_result
+      changed_when: "'Release was upgraded' in helm_result.stdout or 'installed' in helm_result.stdout"
+    # --- Düzeltme sonu ---
 
     # --------------------------------------------------------------------------
     # GÖREV BLOKU 3: Güvenlik Denetimleri
