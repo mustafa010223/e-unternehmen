@@ -67,12 +67,15 @@
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
         values:
-          # NİHAİ DÜZELTME: Helm hatasını çözmek için bu bölüm eklendi.
+          # NİHAİ DÜZELTME: Helm hatasını çözmek için tam mongodb yapılandırması
           mongodb:
             name: "mongodb"
             image:
               repository: "mongo"
               tag: "6.0"
+            service:
+              name: "mongodb"
+              port: 27017
           
           monitoring:
             enable: true
