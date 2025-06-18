@@ -71,7 +71,6 @@
           # bağımlılığını aktif hale getirmek için eklendi.
           monitoring:
             enable: true
-          
           frontend:
             image:
               repository: "{{ frontend_image_repo }}"
