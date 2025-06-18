@@ -2,36 +2,37 @@ name: CI/CD Pipeline for Microservices
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop] # main veya develop dallarına yapılan push'larda çalışır
   pull_request:
-    branches: [main, develop]
-  workflow_dispatch:
+    branches: [main, develop] # main veya develop dallarına yapılan pull request'lerde çalışır
+  workflow_dispatch: # Manuel olarak da çalıştırılabilir
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: true # Aynı anda birden fazla çalıştırmayı önler
 
 env:
-  DOCKERHUB_USERNAME: meyfcsalik
+  DOCKERHUB_USERNAME: meyfcsalik # Docker Hub kullanıcı adınız
 
 jobs:
   test-and-build:
     name: Test, Build and Push Docker Images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # İşin çalışacağı ortam
     outputs:
       image_tag: ${{ steps.vars.outputs.sha_full }}
       deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
+      # Frontend ve Backend için tam imaj etiketleri
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
       image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_full }}
     services:
-      mongodb_test:
+      mongodb_test: # Testler için MongoDB servisi
         image: mongo:6.0
-        ports: [27017:27017]
+        ports: ['27017:27017']
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Git geçmişinin tamamını getirir (TruffleHog için gerekli olabilir)
 
       - name: Set up Node.js with Cache v2
         uses: actions/setup-node@v4
@@ -40,19 +41,19 @@ jobs:
           cache: 'npm'
           cache-dependency-path: |
             frontend/package-lock.json
-            backend/package-lock.lock
-      
+            backend/package-lock.json
+
       - name: Set Output Variables (Commit SHA)
         id: vars
-        run: echo "sha_full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+        run: echo "sha_full=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Determine Environment Name
         id: set_env
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "DEPLOY_ENV=production" >> $GITHUB_OUTPUT
+            echo "DEPLOY_ENV=production" >> "$GITHUB_OUTPUT"
           else
-            echo "DEPLOY_ENV=staging" >> $GITHUB_OUTPUT
+            echo "DEPLOY_ENV=staging" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Frontend - Install Dependencies & Lint
@@ -126,8 +127,7 @@ jobs:
       - name: Checkout Repository on Self-Hosted Runner
         uses: actions/checkout@v4
         with:
-          submodules: false 
-          # Veya altmodül gerekli ise ve URL sorunu varsa, .gitmodules dosyanızı kontrol edin.
+          submodules: false
 
       - name: Debug Print Current Working Directory
         run: |
@@ -157,11 +157,9 @@ jobs:
           mkdir -p ansible
           rm -f ansible/k3s-cluster.ini
           
-          # Envanter dosyasının içeriğini doğrudan echo komutuna aktararak dosyaya yazma.
-          # Bu yöntem YAML ayrıştırma hatalarını daha iyi önler.
-          # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa', 'root', 'ubuntu' vb.)
-          # ansible_env değişkeni ile KUBECONFIG yolu burada ayarlanıyor.
-          echo -e "[k3s_cluster]\n192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'" > ansible/k3s-cluster.ini
+          # Ansible envanter dosyasının içeriği, KUBECONFIG yolu doğru şekilde ayarlandı.
+          # Lütfen ANSIBLE KULLANICINIZI BURADA KENDİ DOĞRU KULLANICI ADINIZLA DEĞİŞTİRİN (örn. 'mustafa').
+          echo -e "[k3s_cluster]\nmaster ansible_host=192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem\n[k3s_cluster:vars]\nansible_env='{\"KUBECONFIG\":\"/home/mustafa/kubeconfig\"}'" > ansible/k3s-cluster.ini
           
           echo "--- Content of newly created k3s-cluster.ini ---"
           cat ansible/k3s-cluster.ini
@@ -200,6 +198,7 @@ jobs:
           FRONTEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
           BACKEND_FULL_TAG="${{ needs.test-and-build.outputs.image_tag_full_backend }}" 
 
+          # Sadece etiket kısmını almak için shell parametre manipülasyonu
           FRONTEND_ONLY_TAG="${FRONTEND_FULL_TAG##*:}"
           BACKEND_ONLY_TAG="${BACKEND_FULL_TAG##*:}"
 
@@ -216,7 +215,7 @@ jobs:
             --extra-vars "app_domain=my-app-${{ needs.test-and-build.outputs.deploy_env }}.example.com" \
             --extra-vars "deploy_env_name=${{ needs.test-and-build.outputs.deploy_env }}"
         env:
-          ANSIBLE_HOST_KEY_CHECKING: 'False'
+          ANSIBLE_HOST_KEY_CHECKING: 'False' # SSH anahtar doğrulamayı kapatır (güvenlik için dikkatli kullanılmalı)
 
       - name: Clean up Vault Password File
         if: always()

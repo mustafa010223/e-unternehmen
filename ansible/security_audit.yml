@@ -4,15 +4,30 @@
   become: yes
   vars:
     critical_paths:
-      - /etc/kubernetes/pki
-      - /etc/ansible
+      # K3s'in ana yapılandırma ve sertifika dizinleri
+      - /etc/rancher/k3s/
+      - /var/lib/rancher/k3s/server/
       - /var/lib/kubelet
+      - /etc/ansible
   tasks:
-    - name: Kritik dosya izinlerini kontrol et
-      command: find {{ item }} -type f -perm /o=rwx
+    - name: Kritik dizinlerin varlığını doğrula (K3s için uyarlanmış)
+      ansible.builtin.stat:
+        path: "{{ item }}"
       loop: "{{ critical_paths }}"
+      register: dir_checks_results
+
+    - name: Eksik kritik dizinler varsa uyar
+      ansible.builtin.fail:
+        msg: "HATA: Kritik dizin bulunamadı: {{ item.item }}. Lütfen K3s kurulumunuzu ve dosya yollarını kontrol edin."
+      loop: "{{ dir_checks_results.results }}"
+      when: not item.stat.exists
+
+    - name: Kritik dosya izinlerini kontrol et
+      # find komutunu, mevcut dizinlerde çalıştırırız
+      command: find {{ item }} -type f -perm /o=rwx
+      loop: "{{ critical_paths }}" # Güncellenmiş critical_paths listesini kullanır
       register: insecure_files
-      ignore_errors: yes
+      ignore_errors: yes # Hata olsa bile devam eder, bu sayede tüm izinleri kontrol eder
 
     - name: Yetkisiz erişim uyarısı ver
       fail:
@@ -21,5 +36,6 @@
       when: item.stdout != ""
 
     - name: Vault şifreleme durumunu doğrula
-      command: ansible-vault view secrets.yml --vault-password-file=vault_pass.txt
+      # secrets.yml dosyasının yolu ana playbook ile tutarlı olmalı
+      command: ansible-vault view secrets/secrets.yaml --vault-password-file=vault_pass.txt
       delegate_to: localhost
