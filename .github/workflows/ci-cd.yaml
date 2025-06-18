@@ -132,20 +132,24 @@ jobs:
           [k3s_cluster:vars]
           ansible_env='{"KUBECONFIG":"/home/mustafa/kubeconfig"}'
           EOF
-          
-          echo "--- Content of inventory file ---"
-          cat ansible/k3s-cluster.ini
 
       - name: Provide Ansible Vault Password
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
       
       # =========================================================================
-      # --- KRİTİK DÜZELTME: Bu adım Helm hatasını çözmek için eklenmiştir ---
+      # --- KRİTİK DÜZELTME: Helm bağımlılıklarını indirmeden önce repo ekleniyor ---
       # =========================================================================
-      - name: Helm Chart Bağımlılıklarını İndir
-        # Bu yolun, Chart.yaml dosyanızın bulunduğu dizin olduğundan emin olun.
-        working-directory: helm/my-app 
-        run: helm dependency build
+      - name: Helm Chart Bağımlılıklarını Hazırla
+        working-directory: helm/my-app
+        run: |
+          # 1. Helm'e Prometheus repository'sini tanıtıyoruz.
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          
+          # 2. Helm repolarını güncelliyoruz (en iyi pratik).
+          helm repo update
+          
+          # 3. Artık repo bilindiği için bağımlılıkları indiriyoruz.
+          helm dependency build
 
       - name: Run Ansible Playbook for Deployment
         shell: bash
