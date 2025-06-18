@@ -5,8 +5,8 @@ Frontend'e erişmek için (NodePort kullanılıyorsa):
   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
   echo http://$NODE_IP:$NODE_PORT
 
-Backend service (ClusterIP): {{ include "myapp.fullname" . }}-backend:{{ .Values.backend.service.port }}
+Backend service (ClusterIP): {{ include "my-app.fullname" . }}-backend:{{ .Values.backend.service.port }}
 MongoDB service (ClusterIP): {{ .Values.mongodb.service.name }}:{{ .Values.mongodb.service.port }}
 
 Uygulama loglarını görmek için:
-  kubectl logs -f -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "myapp.name" . }},app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl logs -f -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "my-app.name" . }},app.kubernetes.io/instance={{ .Release.Name }}
