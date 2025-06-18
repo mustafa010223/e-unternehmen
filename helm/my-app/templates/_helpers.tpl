@@ -49,3 +49,14 @@ Selector labels
 app.kubernetes.io/name: {{ include "my-app.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+Kullanılacak service account adını oluşturur.
+*/}}
+{{- define "my-app.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "my-app.fullname" .) .Values.serviceAccount.name }}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end -}}
+{{- end -}}
