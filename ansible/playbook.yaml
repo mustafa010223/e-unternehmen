@@ -67,10 +67,16 @@
         release_namespace: "{{ k8s_namespace }}"
         create_namespace: yes
         values:
-          # DÜZELTME: Bu bölüm, Chart.yaml'daki 'kube-prometheus-stack'
-          # bağımlılığını aktif hale getirmek için eklendi.
+          # NİHAİ DÜZELTME: Helm hatasını çözmek için bu bölüm eklendi.
+          mongodb:
+            name: "mongodb"
+            image:
+              repository: "mongo"
+              tag: "6.0"
+          
           monitoring:
             enable: true
+          
           frontend:
             image:
               repository: "{{ frontend_image_repo }}"
