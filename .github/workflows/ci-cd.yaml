@@ -1,4 +1,4 @@
-name: Mikroservisler için CI/CD Hattı
+name: CI/CD Pipeline for Microservices
 
 on:
   push:
@@ -16,24 +16,24 @@ env:
 
 jobs:
   test-and-build:
-    name: Docker İmajlarını Test Et, Oluştur ve Gönder
+    name: Test, Build and Push Docker Images
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
-      deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
+      # Bu çıktılar 'deploy' işi tarafından kullanılmak için doğrudur.
       image_tag_full_frontend: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
       image_tag_full_backend: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
+      deploy_env: ${{ steps.set_env.outputs.DEPLOY_ENV }}
     services:
       mongodb_test:
         image: mongo:6.0
         ports: ['27017:27017']
     steps:
-      - name: Depoyu Çıkart (Checkout Repository)
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Node.js'i Önbellek ile Kur
+      - name: Set up Node.js with Cache
         uses: actions/setup-node@v4
         with:
           node-version: '18'
@@ -41,12 +41,12 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             backend/package-lock.json
-
-      - name: Çıktı Değişkenlerini Ayarla (Kısa Commit SHA)
+      
+      - name: Set Output Variables (Short Commit SHA)
         id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Ortam Adını Belirle
+      - name: Determine Environment Name
         id: set_env
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
@@ -55,14 +55,15 @@ jobs:
             echo "DEPLOY_ENV=staging" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Frontend - Bağımlılık Kur, Lint Et ve Test Et
+      - name: Frontend - Install, Lint, Test, and Build
         working-directory: ./frontend
         run: |
           npm ci
           npm run lint --if-present
           npm test --if-present -- --watchAll=false --coverage
+          npm run build
 
-      - name: Backend - Bağımlılık Kur, Lint Et ve Test Et
+      - name: Backend - Install, Lint, and Test
         working-directory: ./backend
         run: |
           npm ci
@@ -71,62 +72,64 @@ jobs:
         env:
           MONGO_URL: mongodb://localhost:27017/my-app_test
 
-      - name: Docker Hub'a Giriş Yap
+      - name: Log in to Docker Hub
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Frontend ve Backend Docker İmajlarını Oluştur ve Gönder
+      - name: Build and Push Frontend Docker Image
         if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: ${{ jobs.test-and-build.outputs.image_tag_full_frontend }}
+          # DÜZELTME: 'jobs.' yerine, aynı işteki önceki adımlardan gelen
+          # çıktılar kullanılarak etiket doğru şekilde oluşturuluyor.
+          tags: ${{ env.DOCKERHUB_USERNAME }}/frontend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
           no-cache: true
-      - uses: docker/build-push-action@v5
+
+      - name: Build and Push Backend Docker Image
         if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: ${{ jobs.test-and-build.outputs.image_tag_full_backend }}
+          # DÜZELTME: 'jobs.' yerine, aynı işteki önceki adımlardan gelen
+          # çıktılar kullanılarak etiket doğru şekilde oluşturuluyor.
+          tags: ${{ env.DOCKERHUB_USERNAME }}/backend:${{ steps.set_env.outputs.DEPLOY_ENV }}-${{ steps.vars.outputs.sha_short }}
           no-cache: true
 
   deploy:
-    name: K3s'e Dağıt ve Ansible ile Güvenlik/E2E Testlerini Çalıştır
+    name: Deploy to K3s and Run Security/E2E Tests via Ansible
     needs: test-and-build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: self-hosted
     environment: ${{ needs.test-and-build.outputs.deploy_env }}
     steps:
-      - name: Depoyu Çıkart
+      - name: Checkout Repository on Self-Hosted Runner
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Python'u Kur ve Gerekli Paketleri Yükle
+      - name: Set up Python and Install Ansible
         run: |
           python3 -m venv .venv
           source .venv/bin/activate
-          # DÜZELTME: K8s modülünün sorunsuz çalışması için 'kubernetes' paketi eklendi.
           pip install ansible openshift kubernetes
 
-      - name: Ansible için SSH Özel Anahtarını Yapılandır
+      - name: Configure SSH Private Key for Ansible
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.K3S_SSH_PRIVATE_KEY }}" > ~/.ssh/k8s_cluster_key.pem
           chmod 600 ~/.ssh/k8s_cluster_key.pem
 
-      - name: Runner Üzerinde Ansible Envanter Dosyasını Oluştur
+      - name: Create Correct Ansible Inventory File on Runner
         run: |
           mkdir -p ansible
-          # İYİLEŞTİRME: Daha okunaklı ve tutarlı bir envanter dosyası oluşturuluyor.
-          # 'k3s-server' adı, kubectl çıktınızla eşleşir.
-          # 'ansible_user' ve KUBECONFIG yolu, runner'ınızdaki kullanıcıya ('mustafa') göre ayarlanmalıdır.
           cat <<EOF > ansible/k3s-cluster.ini
           [k3s_cluster]
           k3s-server ansible_host=192.168.0.60 ansible_user=mustafa ansible_ssh_private_key_file=~/.ssh/k8s_cluster_key.pem
@@ -134,24 +137,21 @@ jobs:
           [k3s_cluster:vars]
           ansible_env='{"KUBECONFIG":"/home/mustafa/kubeconfig"}'
           EOF
-
-          echo "--- Yeni Oluşturulan k3s-cluster.ini Dosyasının İçeriği ---"
+          
+          echo "--- Content of inventory file ---"
           cat ansible/k3s-cluster.ini
-          echo "------------------------------------------------"
 
-      - name: Ansible Vault Şifresini Sağla
-        run: |
-          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+      - name: Provide Ansible Vault Password
+        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
 
-      - name: Dağıtım için Ansible Playbook'u Çalıştır
+      - name: Run Ansible Playbook for Deployment
         shell: bash
         run: |
           source .venv/bin/activate
-
+          
           FRONTEND_TAG_FULL="${{ needs.test-and-build.outputs.image_tag_full_frontend }}"
           BACKEND_TAG_FULL="${{ needs.test-and-build.outputs.image_tag_full_backend }}"
           
-          # Sadece etiket kısmını (ortam-sha) ayıkla
           FRONTEND_TAG_ONLY="${FRONTEND_TAG_FULL##*:}"
           BACKEND_TAG_ONLY="${BACKEND_TAG_FULL##*:}"
           
@@ -165,6 +165,6 @@ jobs:
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False'
 
-      - name: Vault Şifre Dosyasını Temizle
+      - name: Clean up Vault Password File
         if: always()
         run: rm -f vault_pass.txt
