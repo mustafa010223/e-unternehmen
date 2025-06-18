@@ -1,99 +1,40 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "my-app.fullname" . }}-{{ .Values.mongodb.name }}
+  # DÜZELTME: İsim, _helpers.tpl dosyasındaki doğru tanımdan çağrılıyor.
+  name: {{ include "my-app.fullname" . }}-mongodb
   labels:
     {{- include "my-app.labels" . | nindent 4 }}
-    app.kubernetes.io/component: {{ .Values.mongodb.name }}
+    app.kubernetes.io/component: mongodb
 spec:
-  # serviceName, pod'lara kararlı ağ kimlikleri (DNS) sağlamak için gereklidir.
-  # Bu, MongoDB Service'inizin adına işaret etmelidir.
-  serviceName: {{ .Values.mongodb.service.name | default (printf "%s-mongodb" (include "my-app.fullname" .)) }} # Burası düzeltildi
-  replicas: {{ .Values.mongodb.replicaCount }}
+  # DÜZELTME: Servis adı da doğru tanımdan çağrılıyor.
+  serviceName: {{ include "my-app.fullname" . }}-mongodb
+  replicas: 1
   selector:
     matchLabels:
       {{- include "my-app.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: {{ .Values.mongodb.name }}
+      app.kubernetes.io/component: mongodb
   template:
     metadata:
       labels:
         {{- include "my-app.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: {{ .Values.mongodb.name }}
-      # Eğer MongoDB metriklerini bir exporter ile topluyorsanız,
-      # podAnnotations buraya eklenebilir.
-      # annotations:
-      #   prometheus.io/scrape: "true"
-      #   prometheus.io/port: "9216" # MongoDB exporter portu
+        app.kubernetes.io/component: mongodb
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      serviceAccountName: {{ include "my-app.serviceAccountName" . }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Values.mongodb.name }}
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.mongodb.image.repository }}:{{ .Values.mongodb.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.mongodb.image.pullPolicy }}
+        - name: mongodb
+          image: "{{ .Values.mongodb.image.repository }}:{{ .Values.mongodb.image.tag }}"
           ports:
-            - name: mongodb # Service'teki targetPort ile eşleşebilir
-              containerPort: 27017 # MongoDB'nin varsayılan portu
+            - name: mongodb
+              containerPort: {{ .Values.mongodb.service.port }}
               protocol: TCP
-          env:
-            # ÖNEMLİ: MONGO_INITDB_ROOT_USERNAME ve MONGO_INITDB_ROOT_PASSWORD
-            # gibi hassas veriler kesinlikle Kubernetes Secret'larından alınmalıdır.
-            - name: MONGO_INITDB_ROOT_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  # Secret adınız (örneğin: {{ include "myapp.fullname" . }}-mongodb-credentials)
-                  # Bu secret'ı ayrıca templates/ altına bir secret.yaml dosyası ile oluşturmanız önerilir.
-                  name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "my-app.fullname" .)) }}
-                  key: {{ .Values.mongodb.auth.usernameKey | default "mongodb-root-username" }}
-            - name: MONGO_INITDB_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.mongodb.auth.existingSecret | default (printf "%s-mongodb-credentials" (include "my-app.fullname" .)) }}
-                  key: {{ .Values.mongodb.auth.passwordKey | default "mongodb-root-password" }}
-            # Diğer MongoDB yapılandırma ortam değişkenleri buraya eklenebilir
-            # Örneğin: MONGO_OPLOG_SIZE, MONGO_REPLICA_SET_NAME vb.
-            # {{- if .Values.mongodb.auth.replicaSet.enabled }}
-            # - name: MONGO_REPLICA_SET_NAME
-            #   value: {{ .Values.mongodb.auth.replicaSet.name | quote }}
-            # {{- end }}
           volumeMounts:
-            - name: mongodb-data # Bu isim aşağıdaki volumeClaimTemplates.metadata.name ile eşleşmelidir
-              mountPath: /data/db # MongoDB'nin veri yazdığı standart dizin
-          resources:
-            {{- toYaml .Values.mongodb.resources | nindent 12 }}
-          livenessProbe:
-            {{- toYaml .Values.mongodb.livenessProbe | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.mongodb.readinessProbe | nindent 12 }}
-  {{- if .Values.mongodb.persistence.enabled }}
+            - name: mongodb-data
+              mountPath: /data/db
   volumeClaimTemplates:
     - metadata:
-        name: mongodb-data # volumeMounts.name ile eşleşmelidir
-        labels:
-          {{- include "my-app.selectorLabels" . | nindent 10 }}
-          app.kubernetes.io/component: {{ .Values.mongodb.name }}
-        # annotations:
-        #   {{- toYaml .Values.mongodb.persistence.annotations | nindent 10 }}
+        name: mongodb-data
       spec:
-        accessModes:
-          {{- range .Values.mongodb.persistence.accessModes }}
-          - {{ . | quote }}
-          {{- end }}
+        accessModes: [ "ReadWriteOnce" ]
         resources:
           requests:
             storage: {{ .Values.mongodb.persistence.size }}
-        {{- if .Values.mongodb.persistence.storageClass }}
-        {{- if (eq "-" .Values.mongodb.persistence.storageClass) }}
-        storageClassName: "" # Varsayılan StorageClass'ı kullanmak için
-        {{- else }}
-        storageClassName: "{{ .Values.mongodb.persistence.storageClass }}"
-        {{- end }}
-        {{- end }}
-  {{- end }}
