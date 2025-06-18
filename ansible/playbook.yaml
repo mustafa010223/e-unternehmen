@@ -8,7 +8,7 @@
 
   vars:
     helm_release_name: "my-app"
-    k8s_namespace: "default"
+    k8s_namespace: "my-app-ns" # Namespace'i default yerine daha spesifik bir ad yapalım
     frontend_image_repo: "meyfcsalik/frontend"
     frontend_image_tag: "latest"
     backend_image_repo: "meyfcsalik/backend"
@@ -69,17 +69,20 @@
         values:
           # NİHAİ DÜZELTME: Helm hatasını çözmek için tam mongodb yapılandırması
           mongodb:
-            name: "mongodb"
-            image:
-              repository: "mongo"
-              tag: "6.0"
+            auth:
+              enabled: false
+              existingSecret: ""
+              rootPassword: "" # Auth false olduğu için boş kalabilir
+            persistence:
+              size: 1Gi # StatefulSet için gerekli olan depolama boyutu
             service:
               name: "mongodb"
               port: 27017
+            image:
+              repository: "mongo"
+              tag: "6.0"
           
-          monitoring:
-            enable: true
-          
+          # Diğer servisler için değerler
           frontend:
             image:
               repository: "{{ frontend_image_repo }}"
