@@ -59,7 +59,16 @@
         definition: "{{ (lookup('file', playbook_dir + '/configs/selenium-test-configmap.yaml') | from_yaml) | combine({'metadata': {'namespace': k8s_namespace}}, recursive=True) }}"
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
 
-    # --- NİHAİ DÜZELTME: Sorunlu Helm modülü yerine doğrudan komut çalıştırma ---
+    # --- NİHAİ DÜZELTME: Helm'den önce namespace'in var olduğundan emin ol ---
+    - name: Dağıtım yapılacak ad alanının var olduğundan emin ol
+      tags: deploy
+      kubernetes.core.k8s:
+        name: "{{ k8s_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+        kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
+
     - name: Helm için değerler dosyasını hedef sunucuda oluştur
       tags: deploy
       ansible.builtin.copy:
@@ -95,7 +104,6 @@
           helm upgrade --install {{ helm_release_name }}
           "{{ playbook_dir }}/../helm/my-app/"
           --namespace {{ k8s_namespace }}
-          --create-namespace
           --values /tmp/my_app_values.yaml
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/kubeconfig"
