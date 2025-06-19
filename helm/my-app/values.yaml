@@ -47,6 +47,7 @@ securityContext:
 # Frontend Ayarları
 # -----------------------------------------------------------
 frontend:
+  enabled: true
   name: frontend
   replicaCount: 1
   image:

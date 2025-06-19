@@ -2,6 +2,7 @@
 environment: staging
 
 frontend:
+  enabled: true
   replicaCount: 1
   image:
     tag: "staging-latest"
