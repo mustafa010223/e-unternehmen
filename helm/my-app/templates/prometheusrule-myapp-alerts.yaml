@@ -24,7 +24,7 @@ spec:
             description: {{ "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted more than 2 times in the last 15 minutes." | quote }}
             # runbook_url: "https://your-runbook-url/pod-restarts"
 
-        - alert: HighCPUUsage{{ include "my-app.name" | title | replace "-" "" }}
+        - alert: HighCPUUsage{{ include "my-app.name" . | title | replace "-" "" }}
           expr: >
             sum(rate(container_cpu_usage_seconds_total{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*", container!=""}[5m])) by (pod, container, namespace)
             /
@@ -39,7 +39,7 @@ spec:
             description: {{ "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is using over 80% of its CPU limit." | quote }}
             value: {{ "{{ $value | printf \"%.2f\" }}%" | quote }}
 
-        - alert: HighMemoryUsage{{ include "my-app.name" | title | replace "-" "" }}
+        - alert: HighMemoryUsage{{ include "my-app.name" . | title | replace "-" "" }}
           expr: >
             sum(container_memory_working_set_bytes{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*", container!=""}) by (pod, container, namespace)
             /
