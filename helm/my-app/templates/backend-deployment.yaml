@@ -40,26 +40,16 @@ spec:
               protocol: TCP
           env:
             - name: MONGO_URL
+              # DÜZELTME: 'tpl' fonksiyonu eklenerek MONGO_URL'nin doğru bir şekilde
+              # render edilmesi sağlandı. Bu, 404 hatasını çözecektir.
               value: {{ tpl .Values.backend.env.MONGO_URL . | quote }}
             - name: NODE_ENV
               value: {{ .Values.backend.env.NODE_ENV | quote }}
             # Diğer env değişkenleri buraya eklenebilir
-
-          # DÜZELTME: Sağlık kontrolü yolları, backend uygulamasındaki
-          # (index.js) gerçek endpoint'lerle eşleşecek şekilde güncellendi.
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: http
-            initialDelaySeconds: 30
-            periodSeconds: 15
+            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
           readinessProbe:
-            httpGet:
-              path: /readyz
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 5
-
+            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           volumeMounts:
