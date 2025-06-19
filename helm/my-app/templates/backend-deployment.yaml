@@ -45,13 +45,20 @@ spec:
               value: {{ .Values.backend.env.NODE_ENV | quote }}
             # Diğer env değişkenleri buraya eklenebilir
 
-          # DÜZELTME: Kalıcı çözüm için sağlık kontrolleri tekrar aktif edildi.
-          # Bu, backend uygulamanızdaki /api/health endpoint'inin
-          # 200 OK yanıtı döndürdüğü varsayılarak yapılır.
+          # DÜZELTME: Sağlık kontrolü yolları, backend uygulamasındaki
+          # (index.js) gerçek endpoint'lerle eşleşecek şekilde güncellendi.
           livenessProbe:
-            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
           readinessProbe:
-            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
 
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}

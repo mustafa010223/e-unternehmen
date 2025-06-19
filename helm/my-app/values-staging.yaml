@@ -35,7 +35,7 @@ mongodb:
 ingress:
   enabled: true
   hosts:
-    - host: staging.my-app.com # Domain adınızı güncelleyin
+    - host: app.mustafasalik.de # Domain adınızı güncelleyin
       paths:
         - path: /
           pathType: Prefix

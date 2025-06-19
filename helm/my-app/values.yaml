@@ -131,7 +131,7 @@ mongodb:
 # Ingress Ayarları
 # -----------------------------------------------------------
 ingress:
-  enabled: false
+  enabled: true
   className: nginx
   hosts:
     - host: my-app.local
@@ -142,7 +142,7 @@ ingress:
 # Monitoring (kube-prometheus-stack) Ayarları
 # -----------------------------------------------------------
 monitoring:
-  enabled: false
+  enabled: true
   kube-prometheus-stack:
     namespace: monitoring
     grafana:
