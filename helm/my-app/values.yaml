@@ -4,11 +4,11 @@
 
 # Genel Uygulama ve Ortam Ayarları
 # -----------------------------------------------------------
-# DÜZELTME: 'namespace' anahtarı en üst seviyeye eklendi.
-# Bu, templates/namespace.yaml dosyasının doğru çalışmasını sağlar.
+# 'namespace' anahtarı, chart'ın kendi ad alanını yönetmesi
+# (örn: templates/namespace.yaml) için kullanılır.
 namespace: default
 
-# DÜZELTME: Hangi ortam için değerlerin ayarlandığını belirtir.
+# Hangi ortam için değerlerin ayarlandığını belirtir.
 environment: production
 
 replicaCount: 1
@@ -152,6 +152,9 @@ monitoring:
   # GÜNCELLEME: Üretim ortamında izleme aktif edildi.
   enabled: true
   kube-prometheus-stack:
+    # DÜZELTME: PrometheusRule kaynağının hangi ad alanında oluşturulacağını
+    # belirtmek için 'namespace' anahtarı eklendi. Bu, "nil pointer" hatasını çözer.
+    namespace: monitoring
     grafana:
       # ÖNEMLİ: Bu şifre CI/CD üzerinden veya bir secret'tan güvenli bir şekilde sağlanmalıdır.
       adminPassword: "CHANGEME"
