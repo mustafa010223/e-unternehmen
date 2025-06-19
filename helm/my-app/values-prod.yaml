@@ -2,9 +2,9 @@
 environment: production
 
 frontend:
-  replicaCount: 2 # Üretimde daha fazla replica
+  replicaCount: 2
   image:
-    tag: "production-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+    tag: "production-latest"
   resources:
     requests:
       cpu: "100m"
@@ -16,7 +16,7 @@ frontend:
 backend:
   replicaCount: 2
   image:
-    tag: "production-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+    tag: "production-latest"
   env:
     MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_production"
     NODE_ENV: "production"
@@ -29,18 +29,25 @@ backend:
       memory: "512Mi"
 
 mongodb:
-  replicaCount: 1 # Production için replikasyonlu bir MongoDB kurulumu (örn: Bitnami chart'ı) daha iyi olabilir.
-                  # Şimdilik tek replica StatefulSet.
   persistence:
     size: "10Gi"
 
+ingress:
+  enabled: true
+  hosts:
+    - host: prod.my-app.com # Domain adınızı güncelleyin
+      paths:
+        - path: /
+          pathType: Prefix
+
 monitoring:
-  enabled: true # Üretimde izlemeyi aktif et
+  enabled: true
   kube-prometheus-stack:
-    # adminPassword CI/CD'den gelecek
+    # DÜZELTME: 'namespace' anahtarı buraya da eklendi.
+    namespace: monitoring
     prometheus:
       prometheusSpec:
-        replicas: 1 # Üretim için 2 veya daha fazla replica ve yeterli kaynak ayırın
+        replicas: 2
         retention: "30d"
         resources:
           requests:
@@ -50,7 +57,7 @@ monitoring:
             cpu: "2"
             memory: "8Gi"
     grafana:
-      # adminPassword: "" # CI/CD'den gelecek
+      adminPassword: "" # CI/CD'den güvenli bir şekilde sağlanmalı
       resources:
         requests:
           cpu: "200m"

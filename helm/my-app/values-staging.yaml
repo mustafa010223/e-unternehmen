@@ -4,7 +4,7 @@ environment: staging
 frontend:
   replicaCount: 1
   image:
-    tag: "staging-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+    tag: "staging-latest"
   resources:
     requests:
       cpu: "50m"
@@ -16,7 +16,7 @@ frontend:
 backend:
   replicaCount: 1
   image:
-    tag: "staging-latest" # CI/CD'den gelen commit SHA'lı tag ile override edilecek
+    tag: "staging-latest"
   env:
     MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_staging"
     NODE_ENV: "staging"
@@ -32,9 +32,19 @@ mongodb:
   persistence:
     size: "2Gi"
 
+ingress:
+  enabled: true
+  hosts:
+    - host: staging.my-app.com # Domain adınızı güncelleyin
+      paths:
+        - path: /
+          pathType: Prefix
+
 monitoring:
-  enabled: true # Staging'de izlemeyi aktif et
+  enabled: true
   kube-prometheus-stack:
+    # DÜZELTME: 'namespace' anahtarı buraya da eklendi.
+    namespace: monitoring
     prometheus:
       prometheusSpec:
         replicas: 1
@@ -43,7 +53,7 @@ monitoring:
             cpu: "200m"
             memory: "512Mi"
     grafana:
-      # adminPassword: "" # CI/CD'den gelecek
+      adminPassword: "" # CI/CD'den güvenli bir şekilde sağlanmalı
       resources:
         requests:
           cpu: "100m"

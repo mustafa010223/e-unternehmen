@@ -8,8 +8,8 @@
 # (örn: templates/namespace.yaml) için kullanılır.
 namespace: default
 
-# Hangi ortam için değerlerin ayarlandığını belirtir.
-environment: production
+# Varsayılan ortam ayarı
+environment: development
 
 replicaCount: 1
 imagePullSecrets: []
@@ -41,20 +41,18 @@ securityContext:
   runAsUser: 1001
 
 # ===========================================================
-# ==                   BİLEŞEN AYARLARI                    ==
+# ==             VARSAYILAN BİLEŞEN AYARLARI               ==
 # ===========================================================
 
 # Frontend Ayarları
 # -----------------------------------------------------------
 frontend:
   name: frontend
-  # GÜNCELLEME: Üretim ortamı için replica sayısı 2'ye çıkarıldı.
-  replicaCount: 2
+  replicaCount: 1
   image:
     repository: meyfcsalik/frontend
     pullPolicy: IfNotPresent
-    # CI/CD pipeline'ınız bu değeri (örneğin commit SHA ile) doldurmalıdır.
-    tag: "production-latest"
+    tag: "latest"
   service:
     type: ClusterIP
     port: 80
@@ -83,21 +81,18 @@ frontend:
 # -----------------------------------------------------------
 backend:
   name: backend
-  # GÜNCELLEME: Üretim ortamı için replica sayısı 2'ye çıkarıldı.
-  replicaCount: 2
+  replicaCount: 1
   image:
     repository: meyfcsalik/backend
     pullPolicy: IfNotPresent
-    tag: "production-latest"
+    tag: "latest"
   service:
     type: ClusterIP
     port: 5000
     targetPort: 5000
   env:
-    # GÜNCELLEME: Üretim veritabanı adresi kullanıldı.
-    MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_production"
-    # GÜNCELLEME: Ortam "production" olarak ayarlandı.
-    NODE_ENV: "production"
+    MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_default"
+    NODE_ENV: "development"
   resources:
     limits:
       cpu: "200m"
@@ -124,37 +119,4 @@ mongodb:
   name: mongodb
   image:
     repository: mongo
-    tag: "6.0"
-  service:
-    name: "mongodb"
-    type: ClusterIP
-    port: 27017
-  persistence:
-    enabled: true
-    # GÜNCELLEME: Üretim ortamı için disk boyutu artırıldı.
-    size: 10Gi
-
-# Ingress Ayarları
-# -----------------------------------------------------------
-ingress:
-  # GÜNCELLEME: Üretim ortamında dışarıya erişim için 'true' yapıldı.
-  enabled: true
-  className: nginx # Kullandığınız Ingress Controller'a göre değiştirin.
-  hosts:
-    - host: my-app.local # Burayı kendi domain adınızla değiştirin.
-      paths:
-        - path: /
-          pathType: Prefix
-
-# Monitoring (kube-prometheus-stack) Ayarları
-# -----------------------------------------------------------
-monitoring:
-  # GÜNCELLEME: Üretim ortamında izleme aktif edildi.
-  enabled: true
-  kube-prometheus-stack:
-    # DÜZELTME: PrometheusRule kaynağının hangi ad alanında oluşturulacağını
-    # belirtmek için 'namespace' anahtarı eklendi. Bu, "nil pointer" hatasını çözer.
-    namespace: monitoring
-    grafana:
-      # ÖNEMLİ: Bu şifre CI/CD üzerinden veya bir secret'tan güvenli bir şekilde sağlanmalıdır.
-      adminPassword: "CHANGEME"
+    tag: "6
