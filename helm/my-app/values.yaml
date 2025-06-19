@@ -1,22 +1,36 @@
 # ===========================================================
-# ==             ANA HELM DEĞERLERİ DOSYASI                  ==
+# ==             ANA HELM DEĞERLERİ DOSYASI                ==
 # ===========================================================
 
-# Genel Uygulama Ayarları
+# Genel Uygulama ve Ortam Ayarları
+# -----------------------------------------------------------
+# DÜZELTME: 'namespace' anahtarı en üst seviyeye eklendi.
+# Bu, templates/namespace.yaml dosyasının doğru çalışmasını sağlar.
+namespace: default
+
+# DÜZELTME: Hangi ortam için değerlerin ayarlandığını belirtir.
+environment: production
+
 replicaCount: 1
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# ServiceAccount Ayarları
+# -----------------------------------------------------------
 serviceAccount:
   create: true
   annotations: {}
-  name: ""
+  name: "" # Otomatik isim için boş bırakın
 
+# Pod Güvenlik Konteksti
+# -----------------------------------------------------------
 podSecurityContext:
   runAsNonRoot: true
   fsGroup: 1001
 
+# Container Güvenlik Konteksti
+# -----------------------------------------------------------
 securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
@@ -26,17 +40,23 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 1001
 
-# --------------------------------------------------------------------------
+# ===========================================================
+# ==                   BİLEŞEN AYARLARI                    ==
+# ===========================================================
+
 # Frontend Ayarları
+# -----------------------------------------------------------
 frontend:
   name: frontend
-  replicaCount: 1
+  # GÜNCELLEME: Üretim ortamı için replica sayısı 2'ye çıkarıldı.
+  replicaCount: 2
   image:
     repository: meyfcsalik/frontend
     pullPolicy: IfNotPresent
-    tag: "" # CI/CD'den gelecek
+    # CI/CD pipeline'ınız bu değeri (örneğin commit SHA ile) doldurmalıdır.
+    tag: "production-latest"
   service:
-    type: ClusterIP # Ingress kullanacağımız için ClusterIP daha iyidir
+    type: ClusterIP
     port: 80
     targetPort: 80
   resources:
@@ -59,22 +79,25 @@ frontend:
     initialDelaySeconds: 5
     periodSeconds: 10
 
-# --------------------------------------------------------------------------
 # Backend Ayarları
+# -----------------------------------------------------------
 backend:
   name: backend
-  replicaCount: 1
+  # GÜNCELLEME: Üretim ortamı için replica sayısı 2'ye çıkarıldı.
+  replicaCount: 2
   image:
     repository: meyfcsalik/backend
     pullPolicy: IfNotPresent
-    tag: "" # CI/CD'den gelecek
+    tag: "production-latest"
   service:
     type: ClusterIP
     port: 5000
     targetPort: 5000
   env:
-    MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_default"
-    NODE_ENV: "development"
+    # GÜNCELLEME: Üretim veritabanı adresi kullanıldı.
+    MONGO_URL: "mongodb://{{ include \"my-app.fullname\" . }}-mongodb:27017/my-app_production"
+    # GÜNCELLEME: Ortam "production" olarak ayarlandı.
+    NODE_ENV: "production"
   resources:
     limits:
       cpu: "200m"
@@ -95,36 +118,40 @@ backend:
     initialDelaySeconds: 10
     periodSeconds: 5
 
-# --------------------------------------------------------------------------
 # MongoDB Ayarları
+# -----------------------------------------------------------
 mongodb:
   name: mongodb
   image:
     repository: mongo
     tag: "6.0"
   service:
-    name: "mongodb" # Bu, backend MONGO_URL'i ile tutarlı olmalı
+    name: "mongodb"
     type: ClusterIP
     port: 27017
   persistence:
     enabled: true
-    size: 1Gi
-    
-# --------------------------------------------------------------------------
+    # GÜNCELLEME: Üretim ortamı için disk boyutu artırıldı.
+    size: 10Gi
+
 # Ingress Ayarları
+# -----------------------------------------------------------
 ingress:
-  enabled: false # Varsayılan olarak kapalı, production'da açılacak
-  className: nginx
+  # GÜNCELLEME: Üretim ortamında dışarıya erişim için 'true' yapıldı.
+  enabled: true
+  className: nginx # Kullandığınız Ingress Controller'a göre değiştirin.
   hosts:
-    - host: my-app.local # Varsayılan host
+    - host: my-app.local # Burayı kendi domain adınızla değiştirin.
       paths:
         - path: /
           pathType: Prefix
 
-# --------------------------------------------------------------------------
 # Monitoring (kube-prometheus-stack) Ayarları
+# -----------------------------------------------------------
 monitoring:
-  enabled: false # Varsayılan olarak kapalı, staging/prod'da açılacak
+  # GÜNCELLEME: Üretim ortamında izleme aktif edildi.
+  enabled: true
   kube-prometheus-stack:
     grafana:
-      adminPassword: "CHANGEME" # CI/CD'den güvenli bir şekilde gelmeli
+      # ÖNEMLİ: Bu şifre CI/CD üzerinden veya bir secret'tan güvenli bir şekilde sağlanmalıdır.
+      adminPassword: "CHANGEME"
