@@ -40,7 +40,9 @@ spec:
               protocol: TCP
           env:
             - name: MONGO_URL
-              value: {{ .Values.backend.env.MONGO_URL | quote }}
+              # DÜZELTME: 'tpl' fonksiyonu eklenerek MONGO_URL'nin doğru bir şekilde
+              # render edilmesi sağlandı. Bu, 404 hatasını çözecektir.
+              value: {{ tpl .Values.backend.env.MONGO_URL . | quote }}
             - name: NODE_ENV
               value: {{ .Values.backend.env.NODE_ENV | quote }}
             # Diğer env değişkenleri buraya eklenebilir
@@ -50,11 +52,9 @@ spec:
             {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
-          # DÜZELTME: Node.js uygulamasının geçici dosya ihtiyacı için volüm eklendi
           volumeMounts:
             - name: tmp-volume
               mountPath: /tmp
-      # DÜZELTME: Pod için boş ve yazılabilir bir dizin volümü tanımlandı
       volumes:
         - name: tmp-volume
           emptyDir: {}
