@@ -12,7 +12,7 @@ spec:
   groups:
     - name: {{ include "my-app.name" . }}.rules
       rules:
-        - alert: HighPodRestartCount{{ include "my-app.name" | title | replace "-" "" }}
+        - alert: HighPodRestartCount{{ include "my-app.name" . | title | replace "-" "" }}
           expr: rate(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}", pod=~"^{{ include "my-app.fullname" . }}-(frontend|backend)-.*"}[15m]) * 60 * 5 > 2
           for: 10m
           labels:
