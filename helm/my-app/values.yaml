@@ -134,7 +134,7 @@ ingress:
   enabled: true
   className: nginx
   hosts:
-    - host: my-app.local
+    - host: app.mustafasalik.de # Domain adınızı güncelleyin
       paths:
         - path: /
           pathType: Prefix

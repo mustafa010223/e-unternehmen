@@ -36,16 +36,16 @@ spec:
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.backend.service.targetPort | default 5000 }}
+              containerPort: {{ .Values.backend.service.targetPort | default 5000 }} # values.yaml'daki targetPort
               protocol: TCP
           env:
             - name: MONGO_URL
-              # DÜZELTME: 'tpl' fonksiyonu, values.yaml'daki MONGO_URL'nin
-              # içindeki Helm ifadelerini (örn: {{ .Release.Name }}) doğru bir şekilde
-              # işlemesini sağlar. Bu satır doğrudur.
+              # DÜZELTME: 'tpl' fonksiyonu eklenerek MONGO_URL'nin doğru bir şekilde
+              # render edilmesi sağlandı. Bu, 404 hatasını çözecektir.
               value: {{ tpl .Values.backend.env.MONGO_URL . | quote }}
             - name: NODE_ENV
               value: {{ .Values.backend.env.NODE_ENV | quote }}
+            # Diğer env değişkenleri buraya eklenebilir
           livenessProbe:
             {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
           readinessProbe:
