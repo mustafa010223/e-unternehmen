@@ -1,50 +1,60 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "my-app.fullname" . }}-frontend
+  name: {{ include "my-app.fullname" . }}-backend
   labels:
     {{- include "my-app.labels" . | nindent 4 }}
-    app.kubernetes.io/component: {{ .Values.frontend.name }}
+    app.kubernetes.io/component: {{ .Values.backend.name }}
 spec:
-  replicas: {{ .Values.frontend.replicaCount }}
+  replicas: {{ .Values.backend.replicaCount }}
   selector:
     matchLabels:
       {{- include "my-app.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: {{ .Values.frontend.name }}
+      app.kubernetes.io/component: {{ .Values.backend.name }}
   template:
     metadata:
+      annotations:
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "my-app.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: {{ .Values.frontend.name }}
+        app.kubernetes.io/component: {{ .Values.backend.name }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "my-app.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Values.frontend.name }}
+        - name: {{ .Values.backend.name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 80
+              containerPort: {{ .Values.backend.service.targetPort | default 5000 }} # values.yaml'daki targetPort
               protocol: TCP
+          env:
+            - name: MONGO_URL
+              # DÜZELTME: 'tpl' fonksiyonu eklenerek MONGO_URL'nin doğru bir şekilde
+              # render edilmesi sağlandı. Bu, 404 hatasını çözecektir.
+              value: {{ tpl .Values.backend.env.MONGO_URL . | quote }}
+            - name: NODE_ENV
+              value: {{ .Values.backend.env.NODE_ENV | quote }}
+            # Diğer env değişkenleri buraya eklenebilir
           livenessProbe:
-            {{- toYaml .Values.frontend.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.frontend.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
           resources:
-            {{- toYaml .Values.frontend.resources | nindent 12 }}
-          # DÜZELTME: Nginx'in yazma ihtiyacı duyduğu TÜM dizinler için volümler eklendi
+            {{- toYaml .Values.backend.resources | nindent 12 }}
           volumeMounts:
-            - name: nginx-cache
-              mountPath: /var/cache/nginx
-            - name: nginx-run
-              mountPath: /run
-      # DÜZELTME: Pod için gerekli tüm boş dizin volümleri tanımlandı
+            - name: tmp-volume
+              mountPath: /tmp
       volumes:
-        - name: nginx-cache
-          emptyDir: {}
-        - name: nginx-run
+        - name: tmp-volume
           emptyDir: {}

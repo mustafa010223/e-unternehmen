@@ -1,5 +1,5 @@
 # ===========================================================
-# ==             ANA HELM DEĞERLERİ DOSYASI                ==
+# ==               ANA HELM DEĞERLERİ DOSYASI              ==
 # ===========================================================
 
 # Genel Uygulama ve Ortam Ayarları
@@ -41,7 +41,7 @@ securityContext:
   runAsUser: 1001
 
 # ===========================================================
-# ==             VARSAYILAN BİLEŞEN AYARLARI               ==
+# ==             VARSAYILAN BİLEŞEN AYARLARI             ==
 # ===========================================================
 
 # Frontend Ayarları
@@ -102,13 +102,13 @@ backend:
       memory: "128Mi"
   livenessProbe:
     httpGet:
-      path: /api/health
+      path: /        # <-- DÜZELTME: Sağlık kontrolü yolu, uygulamanın ana yolu olarak değiştirildi.
       port: 5000
     initialDelaySeconds: 30
     periodSeconds: 15
   readinessProbe:
     httpGet:
-      path: /api/health
+      path: /        # <-- DÜZELTME: Sağlık kontrolü yolu, uygulamanın ana yolu olarak değiştirildi.
       port: 5000
     initialDelaySeconds: 10
     periodSeconds: 5
@@ -141,9 +141,13 @@ ingress:
 
 # Monitoring (kube-prometheus-stack) Ayarları
 # -----------------------------------------------------------
+# 'prometheusrule-myapp-alerts.yaml' şablonunun doğru çalışması için eklendi.
 monitoring:
   enabled: true
-  kube-prometheus-stack:
-    namespace: monitoring
+  # DİKKAT: Anahtar 'kube_prometheus_stack' olarak değiştirildi (tire yerine alt çizgi).
+  # Helm şablonu bu değere '.Values.monitoring.kube_prometheus_stack' olarak erişiyor.
+  kube_prometheus_stack:
+    namespace: "monitoring" # Prometheus'un kurulu olduğu namespace
     grafana:
+      # Bu şifreyi güvenli bir yerden yönetmeyi unutmayın (örn: Vault, Sealed Secrets)
       adminPassword: "CHANGEME"
