@@ -18,6 +18,8 @@ spec:
         app.kubernetes.io/component: {{ .Values.frontend.name }}
     spec:
       serviceAccountName: {{ include "my-app.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Values.frontend.name }}
           securityContext:
@@ -34,11 +36,15 @@ spec:
             {{- toYaml .Values.frontend.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
-          # DÜZELTME: Nginx'in yazma ihtiyacını karşılamak için volüm eklendi
+          # DÜZELTME: Nginx'in yazma ihtiyacı duyduğu TÜM dizinler için volümler eklendi
           volumeMounts:
             - name: nginx-cache
               mountPath: /var/cache/nginx
-      # DÜZELTME: Pod için boş bir dizin volümü tanımlandı
+            - name: nginx-run
+              mountPath: /run
+      # DÜZELTME: Pod için gerekli tüm boş dizin volümleri tanımlandı
       volumes:
         - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
           emptyDir: {}
