@@ -1,3 +1,4 @@
+{{- if .Values.ingress.enabled -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -22,12 +23,14 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "my-app.fullname" $ }}}-frontend # Frontend servisine yönlendir
+                # DÜZELTME: Fazladan '}' karakteri buradan kaldırıldı.
+                name: {{ include "my-app.fullname" $ }}-frontend
                 port:
-                  number: {{ $.Values.frontend.service.port }} # Frontend servisinin portu
+                  number: {{ $.Values.frontend.service.port }}
           {{- end }}
     {{- end }}
   {{- if .Values.ingress.tls }}
   tls:
     {{- toYaml .Values.ingress.tls | nindent 4 }}
   {{- end }}
+{{- end }}
