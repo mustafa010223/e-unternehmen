@@ -13,6 +13,7 @@
     backend_image_repo: "meyfcsalik/backend"
     backend_image_tag: "latest"
     playbook_dir: "{{ lookup('env', 'PWD') }}/ansible"
+    helm_chart_path: "{{ playbook_dir }}/../helm/my-app"
     critical_paths_k3s:
       - /etc/rancher/k3s/
       - /var/lib/rancher/k3s/server/
@@ -67,42 +68,24 @@
         state: present
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
 
-    - name: Helm için değerler dosyasını hedef sunucuda oluştur
-      tags: deploy
-      ansible.builtin.copy:
-        dest: /tmp/my_app_values.yaml
-        content: |
-          mongodb:
-            auth:
-              enabled: false
-              existingSecret: ""
-              rootPassword: ""
-            persistence:
-              size: 1Gi
-            service:
-              name: "mongodb"
-              port: 27017
-            image:
-              repository: "mongo"
-              tag: "6.0"
-          
-          frontend:
-            image:
-              repository: "{{ frontend_image_repo }}"
-              tag: "{{ frontend_image_tag }}"
-          backend:
-            image:
-              repository: "{{ backend_image_repo }}"
-              tag: "{{ backend_image_tag }}"
+    # KALDIRILDI: Bu görev, Helm'in standartlarını kullanmak yerine eksik bir values dosyası oluşturuyordu.
+    # - name: Helm için değerler dosyasını hedef sunucuda oluştur
 
     - name: Helm chart'ını komut satırından dağıt veya güncelle
       tags: deploy
       ansible.builtin.shell:
+        # DÜZELTME: Helm komutu, projedeki asıl values dosyalarını kullanacak ve
+        # dinamik değişkenleri '--set' ile üzerine yazacak şekilde güncellendi.
         cmd: >
           helm upgrade --install {{ helm_release_name }}
-          "{{ playbook_dir }}/../helm/my-app/"
+          {{ helm_chart_path }}
           --namespace {{ k8s_namespace }}
-          --values /tmp/my_app_values.yaml
+          --values {{ helm_chart_path }}/values.yaml
+          --values {{ helm_chart_path }}/values-{{ deploy_env_name }}.yaml
+          --set frontend.image.repository={{ frontend_image_repo }}
+          --set frontend.image.tag={{ frontend_image_tag }}
+          --set backend.image.repository={{ backend_image_repo }}
+          --set backend.image.tag={{ backend_image_tag }}
       environment:
         KUBECONFIG: "/home/{{ ansible_user }}/kubeconfig"
       register: helm_result
@@ -139,9 +122,6 @@
           loop: "{{ insecure_files_check.results }}"
           when:
             - item.stdout != ""
-            # DÜZELTME: Bu katı güvenlik denetimi, 'staging' gibi üretim dışı ortamlarda
-            # sıkça karşılaşılan ve genellikle kabul edilebilir dosya izinleri nedeniyle
-            # pipeline'ın başarısız olmasını engellemek için sadece 'prod' ortamında zorunlu kılındı.
             - deploy_env_name == 'prod'
 
     # --------------------------------------------------------------------------
@@ -188,4 +168,3 @@
                 restartPolicy: Never
             backoffLimit: 0
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
-
