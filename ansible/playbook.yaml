@@ -13,19 +13,16 @@
     backend_image_repo: "meyfcsalik/backend"
     backend_image_tag: "latest"
     playbook_dir: "{{ lookup('env', 'PWD') }}/ansible"
-    # DÜZELTME: Chart'ın yerel ve uzak yolları için ayrı değişkenler tanımlandı.
+    # DÜZELTME: Chart'ın yerel yolu artık mutlak yol olarak kullanılacak.
     local_helm_chart_path: "{{ playbook_dir }}/../helm/my-app"
-    remote_helm_chart_path: "/tmp/{{ helm_release_name }}-chart"
     critical_paths_k3s:
       - /etc/rancher/k3s/
       - /var/lib/rancher/k3s/server/
       - /var/lib/kubelet
 
-  pre_tasks:
-    - name: Önceki dağıtımdan kalan geçici chart dizinini temizle
-      ansible.builtin.file:
-        path: "{{ remote_helm_chart_path }}"
-        state: absent
+  # KALDIRILDI: Runner ve hedef sunucu aynı olduğu için bu adımlar gereksiz.
+  # pre_tasks:
+  #   - name: Önceki dağıtımdan kalan geçici chart dizinini temizle
 
   tasks:
     # --------------------------------------------------------------------------
@@ -76,26 +73,20 @@
         state: present
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
 
-    # YENİ GÖREV: Helm komutu uzak sunucuda çalışacağından, önce chart dosyalarını
-    # yerel kontrolcüden uzak sunucuya kopyalamamız gerekiyor.
-    - name: Helm chart dosyalarını uzak sunucuya kopyala
-      tags: deploy
-      ansible.builtin.copy:
-        src: "{{ local_helm_chart_path }}/"
-        dest: "{{ remote_helm_chart_path }}/"
-        mode: '0755'
+    # KALDIRILDI: Runner ve hedef sunucu aynı olduğu için chart'ı kopyalamaya gerek yok.
+    # - name: Helm chart dosyalarını uzak sunucuya kopyala
 
     - name: Helm chart'ını komut satırından dağıt veya güncelle
       tags: deploy
       ansible.builtin.shell:
-        # DÜZELTME: Helm komutu, uzak sunucuya kopyalanan chart ve values dosyalarını
-        # kullanacak şekilde güncellendi.
+        # DÜZELTME: Helm komutu, chart ve values dosyalarını mutlak yerel yollarından
+        # okuyacak şekilde güncellendi. Bu, 'path not found' hatasını çözer.
         cmd: >
           helm upgrade --install {{ helm_release_name }}
-          {{ remote_helm_chart_path }}
+          {{ local_helm_chart_path }}
           --namespace {{ k8s_namespace }}
-          --values {{ remote_helm_chart_path }}/values.yaml
-          --values {{ remote_helm_chart_path }}/values-{{ deploy_env_name }}.yaml
+          --values {{ local_helm_chart_path }}/values.yaml
+          --values {{ local_helm_chart_path }}/values-{{ deploy_env_name }}.yaml
           --set frontend.image.repository={{ frontend_image_repo }}
           --set frontend.image.tag={{ frontend_image_tag }}
           --set backend.image.repository={{ backend_image_repo }}
