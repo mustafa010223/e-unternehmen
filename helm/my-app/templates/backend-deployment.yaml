@@ -50,3 +50,11 @@ spec:
             {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          # DÜZELTME: Node.js uygulamasının geçici dosya ihtiyacı için volüm eklendi
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+      # DÜZELTME: Pod için boş ve yazılabilir bir dizin volümü tanımlandı
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}

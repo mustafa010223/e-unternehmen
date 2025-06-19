@@ -13,21 +13,11 @@ spec:
       app.kubernetes.io/component: {{ .Values.frontend.name }}
   template:
     metadata:
-      annotations:
-        {{- with .Values.frontend.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
       labels:
         {{- include "my-app.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: {{ .Values.frontend.name }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       serviceAccountName: {{ include "my-app.serviceAccountName" . }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Values.frontend.name }}
           securityContext:
@@ -36,7 +26,7 @@ spec:
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.frontend.service.targetPort | default 80 }} # values.yaml'daki targetPort http ise, buradaki containerPort 80 olmalı (veya frontend'in dinlediği port)
+              containerPort: 80
               protocol: TCP
           livenessProbe:
             {{- toYaml .Values.frontend.livenessProbe | nindent 12 }}
@@ -44,3 +34,11 @@ spec:
             {{- toYaml .Values.frontend.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+          # DÜZELTME: Nginx'in yazma ihtiyacını karşılamak için volüm eklendi
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+      # DÜZELTME: Pod için boş bir dizin volümü tanımlandı
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
