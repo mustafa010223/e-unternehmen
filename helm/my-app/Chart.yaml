@@ -18,4 +18,4 @@ dependencies:
     version: "57.0.2" # Güncel ve stabil bir sürüm kullanın
     repository: "https://prometheus-community.github.io/helm-charts"
     # Sadece `monitoring.enabled=true` ise kurulmasını sağlar
-    condition: monitoring.enable
+    condition: monitoring.enabled
