@@ -13,11 +13,19 @@
     backend_image_repo: "meyfcsalik/backend"
     backend_image_tag: "latest"
     playbook_dir: "{{ lookup('env', 'PWD') }}/ansible"
-    helm_chart_path: "{{ playbook_dir }}/../helm/my-app"
+    # DÜZELTME: Chart'ın yerel ve uzak yolları için ayrı değişkenler tanımlandı.
+    local_helm_chart_path: "{{ playbook_dir }}/../helm/my-app"
+    remote_helm_chart_path: "/tmp/{{ helm_release_name }}-chart"
     critical_paths_k3s:
       - /etc/rancher/k3s/
       - /var/lib/rancher/k3s/server/
       - /var/lib/kubelet
+
+  pre_tasks:
+    - name: Önceki dağıtımdan kalan geçici chart dizinini temizle
+      ansible.builtin.file:
+        path: "{{ remote_helm_chart_path }}"
+        state: absent
 
   tasks:
     # --------------------------------------------------------------------------
@@ -68,20 +76,26 @@
         state: present
         kubeconfig: "/home/{{ ansible_user }}/kubeconfig"
 
-    # KALDIRILDI: Bu görev, Helm'in standartlarını kullanmak yerine eksik bir values dosyası oluşturuyordu.
-    # - name: Helm için değerler dosyasını hedef sunucuda oluştur
+    # YENİ GÖREV: Helm komutu uzak sunucuda çalışacağından, önce chart dosyalarını
+    # yerel kontrolcüden uzak sunucuya kopyalamamız gerekiyor.
+    - name: Helm chart dosyalarını uzak sunucuya kopyala
+      tags: deploy
+      ansible.builtin.copy:
+        src: "{{ local_helm_chart_path }}/"
+        dest: "{{ remote_helm_chart_path }}/"
+        mode: '0755'
 
     - name: Helm chart'ını komut satırından dağıt veya güncelle
       tags: deploy
       ansible.builtin.shell:
-        # DÜZELTME: Helm komutu, projedeki asıl values dosyalarını kullanacak ve
-        # dinamik değişkenleri '--set' ile üzerine yazacak şekilde güncellendi.
+        # DÜZELTME: Helm komutu, uzak sunucuya kopyalanan chart ve values dosyalarını
+        # kullanacak şekilde güncellendi.
         cmd: >
           helm upgrade --install {{ helm_release_name }}
-          {{ helm_chart_path }}
+          {{ remote_helm_chart_path }}
           --namespace {{ k8s_namespace }}
-          --values {{ helm_chart_path }}/values.yaml
-          --values {{ helm_chart_path }}/values-{{ deploy_env_name }}.yaml
+          --values {{ remote_helm_chart_path }}/values.yaml
+          --values {{ remote_helm_chart_path }}/values-{{ deploy_env_name }}.yaml
           --set frontend.image.repository={{ frontend_image_repo }}
           --set frontend.image.tag={{ frontend_image_tag }}
           --set backend.image.repository={{ backend_image_repo }}
