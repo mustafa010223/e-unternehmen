@@ -185,6 +185,17 @@ jobs:
       - name: Ansible Vault Şifresini Sağla
         run: |
           echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
+      
+      # YENİ EKLENEN ADIM: Prometheus Node Exporter DaemonSet'ini temizle
+      - name: Prometheus Node Exporter DaemonSet'ini Temizle
+        run: |
+          # Bu adım, kubeconfig dosyasının mevcut olduğundan emin olmak için
+          # SSH anahtarını ve KUBECONFIG ortam değişkenini kullanır.
+          # --ignore-not-found=true: DaemonSet yoksa hata vermez.
+          ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 \
+            'export KUBECONFIG=/home/mustafa/kubeconfig && kubectl delete daemonset my-app-prometheus-node-exporter -n default --ignore-not-found=true'
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False' # SSH anahtar doğrulamayı kapatır (güvenlik için dikkatli kullanılmalı)
 
       - name: Dağıtım, Güvenlik ve E2E Testleri için Ansible Playbook'u Çalıştır
         shell: bash
