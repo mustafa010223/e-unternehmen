@@ -186,14 +186,14 @@ jobs:
         run: |
           echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > vault_pass.txt
       
-      # YENİ EKLENEN ADIM: Prometheus Node Exporter DaemonSet'ini temizle
-      - name: Prometheus Node Exporter DaemonSet'ini Temizle
+      # YENİ EKLENEN ADIM: Helm sürümünü kaldır (eğer varsa)
+      - name: Helm Sürümünü Kaldır
         run: |
-          # Bu adım, kubeconfig dosyasının mevcut olduğundan emin olmak için
-          # SSH anahtarını ve KUBECONFIG ortam değişkenini kullanır.
-          # --ignore-not-found=true: DaemonSet yoksa hata vermez.
+          # Bu adım, kubeconfig dosyasının mevcut olduğundan emin olmak için SSH anahtarını kullanır.
+          # --ignore-not-found: Sürüm yoksa hata vermez.
+          # -n default: Varsayılan ad alanında çalışır.
           ssh -i ~/.ssh/k8s_cluster_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null mustafa@192.168.0.60 \
-            'export KUBECONFIG=/home/mustafa/kubeconfig && kubectl delete daemonset my-app-prometheus-node-exporter -n default --ignore-not-found=true'
+            'export KUBECONFIG=/home/mustafa/kubeconfig && helm uninstall my-app -n default --ignore-not-found'
         env:
           ANSIBLE_HOST_KEY_CHECKING: 'False' # SSH anahtar doğrulamayı kapatır (güvenlik için dikkatli kullanılmalı)
 
