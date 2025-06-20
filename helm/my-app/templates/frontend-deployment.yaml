@@ -1,25 +1,22 @@
+# helm/my-app/templates/frontend-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "my-app.fullname" . }}-backend
+  name: {{ include "my-app.fullname" . }}-frontend # Tam adı kullanalım
   labels:
     {{- include "my-app.labels" . | nindent 4 }}
-    app.kubernetes.io/component: {{ .Values.backend.name }}
+    app.kubernetes.io/component: frontend # Bu etiketi ekledik
 spec:
-  replicas: {{ .Values.backend.replicaCount }}
+  replicas: {{ .Values.frontend.replicaCount }} # replicaCount'u values'tan alalım
   selector:
     matchLabels:
       {{- include "my-app.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: {{ .Values.backend.name }}
+      app.kubernetes.io/component: frontend # Bu etiketi ekledik
   template:
     metadata:
-      annotations:
-        {{- with .Values.backend.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
       labels:
         {{- include "my-app.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: {{ .Values.backend.name }}
+        app.kubernetes.io/component: frontend # Bu etiketi ekledik
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -29,32 +26,40 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Values.backend.name }}
+        - name: frontend
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.backend.service.targetPort | default 5000 }} # values.yaml'daki targetPort
+              containerPort: 80
               protocol: TCP
           env:
-            - name: MONGO_URL
-              # DÜZELTME: 'tpl' fonksiyonu eklenerek MONGO_URL'nin doğru bir şekilde
-              # render edilmesi sağlandı. Bu, 404 hatasını çözecektir.
-              value: {{ tpl .Values.backend.env.MONGO_URL . | quote }}
-            - name: NODE_ENV
-              value: {{ .Values.backend.env.NODE_ENV | quote }}
-            # Diğer env değişkenleri buraya eklenebilir
+            # Gerekliyse frontend için env değişkenleri buraya eklenir
+            # - name: SOME_FRONTEND_VAR
+            #   value: "value"
           livenessProbe:
-            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.frontend.livenessProbe | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.frontend.readinessProbe | nindent 12 }}
           resources:
-            {{- toYaml .Values.backend.resources | nindent 12 }}
-          volumeMounts:
-            - name: tmp-volume
-              mountPath: /tmp
-      volumes:
-        - name: tmp-volume
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          volumeMounts: # NGINX'in yazma iznine ihtiyaç duyduğu TÜM dizinler buraya eklendi
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx/client_temp
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx/proxy_temp
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx/fastcgi_temp
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx/uwsgi_temp
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx/scgi_temp
+            - name: nginx-run-volume # <-- YENİ EKLENEN PID DİZİNİ
+              mountPath: /run
+      volumes: # Bu volume'lar tüm yukarıdaki mount noktaları için kullanılacak
+        - name: nginx-cache-volume
+          emptyDir: {}
+        - name: nginx-run-volume # <-- YENİ EKLENEN VOLUME TANIMI
           emptyDir: {}

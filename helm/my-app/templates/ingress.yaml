@@ -1,18 +1,15 @@
-{{- if .Values.ingress.enabled -}}
+{{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "my-app.fullname" . }}-ingress
   labels:
     {{- include "my-app.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
   rules:
     {{- range .Values.ingress.hosts }}
     - host: {{ .host | quote }}
@@ -23,10 +20,9 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                # DÜZELTME: Fazladan '}' karakteri buradan kaldırıldı.
-                name: {{ include "my-app.fullname" $ }}-frontend
+                name: {{ .backend.service.name }}
                 port:
-                  number: {{ $.Values.frontend.service.port }}
+                  number: {{ .backend.service.port.number }}
           {{- end }}
     {{- end }}
   {{- if .Values.ingress.tls }}

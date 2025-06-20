@@ -1,14 +1,4 @@
-# ===========================================================
-# ==               ANA HELM DEĞERLERİ DOSYASI              ==
-# ===========================================================
-
-# Genel Uygulama ve Ortam Ayarları
-# -----------------------------------------------------------
-# 'namespace' anahtarı, chart'ın kendi ad alanını yönetmesi
-# (örn: templates/namespace.yaml) için kullanılır.
 namespace: default
-
-# Varsayılan ortam ayarı
 environment: development
 
 replicaCount: 1
@@ -16,21 +6,15 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# ServiceAccount Ayarları
-# -----------------------------------------------------------
 serviceAccount:
   create: true
   annotations: {}
-  name: "" # Otomatik isim için boş bırakın
+  name: ""
 
-# Pod Güvenlik Konteksti
-# -----------------------------------------------------------
 podSecurityContext:
   runAsNonRoot: true
   fsGroup: 1001
 
-# Container Güvenlik Konteksti
-# -----------------------------------------------------------
 securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
@@ -40,12 +24,6 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 1001
 
-# ===========================================================
-# ==             VARSAYILAN BİLEŞEN AYARLARI             ==
-# ===========================================================
-
-# Frontend Ayarları
-# -----------------------------------------------------------
 frontend:
   enabled: true
   name: frontend
@@ -55,9 +33,10 @@ frontend:
     pullPolicy: IfNotPresent
     tag: "latest"
   service:
-    type: ClusterIP
+    type: NodePort
     port: 80
     targetPort: 80
+    nodePort: 30081
   resources:
     limits:
       cpu: 100m
@@ -78,8 +57,6 @@ frontend:
     initialDelaySeconds: 5
     periodSeconds: 10
 
-# Backend Ayarları
-# -----------------------------------------------------------
 backend:
   name: backend
   replicaCount: 1
@@ -103,19 +80,17 @@ backend:
       memory: "128Mi"
   livenessProbe:
     httpGet:
-      path: /        # <-- DÜZELTME: Sağlık kontrolü yolu, uygulamanın ana yolu olarak değiştirildi.
+      path: /
       port: 5000
     initialDelaySeconds: 30
     periodSeconds: 15
   readinessProbe:
     httpGet:
-      path: /        # <-- DÜZELTME: Sağlık kontrolü yolu, uygulamanın ana yolu olarak değiştirildi.
+      path: /
       port: 5000
     initialDelaySeconds: 10
     periodSeconds: 5
 
-# MongoDB Ayarları
-# -----------------------------------------------------------
 mongodb:
   name: mongodb
   image:
@@ -129,26 +104,25 @@ mongodb:
     enabled: true
     size: 1Gi
 
-# Ingress Ayarları
-# -----------------------------------------------------------
 ingress:
   enabled: true
   className: nginx
+  annotations: {}
   hosts:
-    - host: app.mustafasalik.de # Domain adınızı güncelleyin
+    - host: app.mustafasalik.de
       paths:
         - path: /
           pathType: Prefix
+          backend:
+            service:
+              name: my-app-frontend
+              port:
+                number: 80
+  tls: []
 
-# Monitoring (kube-prometheus-stack) Ayarları
-# -----------------------------------------------------------
-# 'prometheusrule-myapp-alerts.yaml' şablonunun doğru çalışması için eklendi.
 monitoring:
   enabled: true
-  # DİKKAT: Anahtar 'kube_prometheus_stack' olarak değiştirildi (tire yerine alt çizgi).
-  # Helm şablonu bu değere '.Values.monitoring.kube_prometheus_stack' olarak erişiyor.
   kube_prometheus_stack:
-    namespace: "monitoring" # Prometheus'un kurulu olduğu namespace
+    namespace: "monitoring"
     grafana:
-      # Bu şifreyi güvenli bir yerden yönetmeyi unutmayın (örn: Vault, Sealed Secrets)
       adminPassword: "CHANGEME"
