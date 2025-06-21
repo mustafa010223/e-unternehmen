@@ -121,7 +121,7 @@ ingress:
   tls: []
 
 monitoring:
-  enabled: true
+  enabled: false
   kube_prometheus_stack:
     namespace: "monitoring"
     grafana:
