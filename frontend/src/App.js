@@ -1,1029 +1,850 @@
-import React, { useState, createContext, useContext, useEffect } from 'react';
+import React, { useState } from 'react';
 
-// Tailwind CSS'i kullanabilmek için bu script'i head etiketine eklemeniz gerekir:
-// <script src="https://cdn.tailwindcss.com"></script>
-// Ayrıca, Inter fontunu kullanmak için CSS dosyanıza ekleyebilirsiniz:
-// @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-// body { font-family: 'Inter', sans-serif; }
-
-// Context API for managing cart and user state
-const AppContext = createContext();
-
-// --- Main App Component ---
+// Main App Component
 const App = () => {
-  const [products, setProducts] = useState([]);
-  const [cart, setCart] = useState([]);
-  const [user, setUser] = useState(null); // { email: string, token: string }
-  const [currentPage, setCurrentPage] = useState('home'); // Simple routing
-  const [message, setMessage] = useState(''); // Global message for user feedback
-  const [showMessage, setShowMessage] = useState(false); // State to control message visibility
-  const [searchTerm, setSearchTerm] = useState(''); // State for search functionality
-  const [showQuickViewModal, setShowQuickViewModal] = useState(false); // State for Quick View Modal visibility
-  const [selectedProduct, setSelectedProduct] = useState(null); // State to store product for Quick View Modal
-  const [selectedCategory, setSelectedCategory] = useState(null); // State for selected main category
-  const [selectedSubCategory, setSelectedSubCategory] = useState(null); // State for selected sub-category
-
-  // Mock product data (replace with API call in a real app)
-  useEffect(() => {
-    // Simulate fetching products from a backend
-    const fetchProducts = async () => {
-      const mockProducts = [
-        { id: 'p1', name: 'Kablosuz Kulaklık', price: 1299.99, image: 'https://placehold.co/400x300/a3e635/16a34a?text=Kulakl%C4%B1k', isNew: true, category: 'Elektronik', subCategory: 'Kulaklıklar', description: 'Yüksek ses kalitesi ve konforlu kullanım sunan kablosuz kulaklık.' },
-        { id: 'p2', name: 'Akıllı Saat', price: 1899.99, image: 'https://placehold.co/400x300/fde047/a16207?text=Ak%C4%B1ll%C4%B1%20Saat', isNew: false, category: 'Elektronik', subCategory: 'Giyilebilir Teknoloji', description: 'Adım sayar, kalp atış hızı takibi ve bildirim özellikleri ile hayatınızı kolaylaştırın.' },
-        { id: 'p3', name: 'Mekanik Klavye', price: 799.99, image: 'https://placehold.co/400x300/fbcfe8/be185d?text=Klavye', isNew: true, category: 'Elektronik', subCategory: 'Bilgisayar Bileşenleri', description: 'Oyun ve yazım için ideal, dayanıklı mekanik klavye.' },
-        { id: 'p4', name: 'Dizüstü Bilgisayar', price: 15499.99, image: 'https://placehold.co/400x300/bfdbfe/1d4ed8?text=Diz%C3%BCst%C3%BC%20Bilgisayar', isNew: false, category: 'Elektronik', subCategory: 'Bilgisayarlar', description: 'Yüksek performanslı işlemci ve geniş depolama alanı ile her işinize yetişir.' },
-        { id: 'p5', name: 'Web Kamerası', price: 499.99, image: 'https://placehold.co/400x300/d8b4fe/7e22ce?text=Web%20Kameras%C4%B1', isNew: false, category: 'Elektronik', subCategory: 'Bilgisayar Bileşenleri', description: 'Full HD görüntü kalitesi ile online toplantılarınızı ve yayınlarınızı iyileştirin.' },
-        { id: 'p6', name: 'Buzdolabı', price: 12000.00, image: 'https://placehold.co/400x300/add8e6/00008b?text=Buzdolab%C4%B1', isNew: true, category: 'Beyaz Eşya', subCategory: 'Buzdolapları', description: 'Geniş iç hacim ve enerji verimliliği ile yiyeceklerinizi taze tutun.' },
-        { id: 'p7', name: 'Çamaşır Makinesi', price: 8500.00, image: 'https://placehold.co/400x300/ffb6c1/800000?text=%C3%87ama%C5%9F%C4%B1r%20Makinesi', isNew: false, category: 'Beyaz Eşya', subCategory: 'Çamaşır Makineleri', description: 'Farklı yıkama programları ve hızlı yıkama özelliği ile kıyafetleriniz tertemiz.' },
-        { id: 'p8', name: 'Kahve Makinesi', price: 950.00, image: 'https://placehold.co/400x300/ffe4b5/a0522d?text=Kahve%20Makinesi', isNew: true, category: 'Ev ve Yaşam', subCategory: 'Küçük Ev Aletleri', description: 'Günün her saati taze ve lezzetli kahve keyfi.' },
-        { id: 'p9', name: 'Robot Süpürge', price: 4200.00, image: 'https://placehold.co/400x300/c2c2c2/36454f?text=Robot%20S%C3%BCp%C3%BCrge', isNew: false, category: 'Ev ve Yaşam', subCategory: 'Temizlik Aletleri', description: 'Akıllı navigasyon ve güçlü çekim ile evinizi kolayca temizleyin.' },
-        { id: 'p10', name: 'Ultra HD Televizyon', price: 18000.00, image: 'https://placehold.co/400x300/87ceeb/000080?text=TV', isNew: true, category: 'Elektronik', subCategory: 'Televizyonlar', description: 'Canlı renkler ve keskin detaylarla sinema keyfini evinize taşıyın.' },
-      ];
-      setProducts(mockProducts);
-    };
-    fetchProducts();
-  }, []);
-
-  // Define categories and subcategories
-  const categories = {
-    'Elektronik': ['Bilgisayarlar', 'Kulaklıklar', 'Giyilebilir Teknoloji', 'Bilgisayar Bileşenleri', 'Televizyonlar'],
-    'Beyaz Eşya': ['Buzdolapları', 'Çamaşır Makineleri', 'Bulaşık Makineleri'],
-    'Ev ve Yaşam': ['Küçük Ev Aletleri', 'Mutfak Ürünleri', 'Temizlik Aletleri']
-  };
-
-  // Mock campaign data
-  const mockCampaigns = [
-    {
-      id: 'c1',
-      title: 'Yaz Fırsatları Başladı!',
-      description: 'Elektronik ürünlerde %20\'ye varan indirimler sizleri bekliyor. Bu yaz teknolojiyi yakalayın!',
-      image: 'https://placehold.co/600x400/ffe0b2/e65100?text=Yaz+F%C4%B1rsatlar%C4%B1',
-      link: '#'
-    },
-    {
-      id: 'c2',
-      title: 'Beyaz Eşya Günleri',
-      description: 'Tüm beyaz eşyalarda ücretsiz kurulum ve ek garanti fırsatları ile evinizi yenileyin.',
-      image: 'https://placehold.co/600x400/bbdefb/1565c0?text=Beyaz+E%C5%9Fya',
-      link: '#'
-    },
-    {
-      id: 'c3',
-      title: 'Okula Dönüş Kampanyası',
-      description: 'Öğrencilere özel laptop ve tabletlerde %15 indirim! Okul ihtiyaçlarınız için hemen göz atın.',
-      image: 'https://placehold.co/600x400/dcedc8/33691e?text=Okul+Kampanyas%C4%B1',
-      link: '#'
-    }
-  ];
-
-
-  // Filtered products based on search term, category and subcategory
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory ? product.category === selectedCategory : true;
-    const matchesSubCategory = selectedSubCategory ? product.subCategory === selectedSubCategory : true;
-    return matchesSearch && matchesCategory && matchesSubCategory;
-  });
-
-  // Function to show messages with a timeout
-  const showTimedMessage = (msg) => {
-    setMessage(msg);
-    setShowMessage(true);
-    setTimeout(() => {
-      setShowMessage(false);
-      setMessage(''); // Clear message after fading out
-    }, 2800); // Increased timeout for better visibility and animation
-  };
-
-  const addToCart = (product) => {
-    setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === product.id);
-      if (existingItem) {
-        return prevCart.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      }
-      return [...prevCart, { ...product, quantity: 1 }];
-    });
-    showTimedMessage(`${product.name} sepete eklendi!`);
-  };
-
-  const removeFromCart = (productId) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id !== productId));
-    showTimedMessage('Ürün sepetten çıkarıldı.');
-  };
-
-  const updateQuantity = (productId, quantity) => {
-    setCart((prevCart) =>
-      prevCart.map((item) =>
-        item.id === productId ? { ...item, quantity: Math.max(1, quantity) } : item
-      )
-    );
-  };
-
-  const handleRegister = (email, password) => {
-    // Simulate API call for registration
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const newUser = { email, token: 'mock_token_123' }; // Mock token
-        setUser(newUser);
-        showTimedMessage('Kayıt başarılı! Giriş yapabilirsiniz.');
-        setCurrentPage('home');
-        resolve({ success: true, user: newUser });
-      }, 1000);
-    });
-  };
-
-  const handleLogin = (email, password) => {
-    // Simulate API call for login
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (user && user.email === email) { // Simple mock login check
-          showTimedMessage('Giriş başarılı!');
-          setCurrentPage('home');
-          resolve({ success: true, user });
-        } else {
-          showTimedMessage('Geçersiz e-posta veya şifre.');
-          reject({ success: false, message: 'Invalid credentials' });
-        }
-      }, 1000);
-    });
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    setCart([]);
-    showTimedMessage('Çıkış yapıldı.');
-    setCurrentPage('home');
-  };
-
-  // Functions for Quick View Modal
-  const openQuickView = (product) => {
-    setSelectedProduct(product);
-    setShowQuickViewModal(true);
-  };
-
-  const closeQuickView = () => {
-    setShowQuickViewModal(false);
-    setSelectedProduct(null);
-  };
-
-  // Payment process simulation
-  const processPayment = () => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        showTimedMessage('Ödeme başarıyla tamamlandı!');
-        setCart([]); // Clear cart after successful payment
-        setCurrentPage('orderConfirmation');
-        resolve({ success: true });
-      }, 2000);
-    });
-  };
+  const [currentPage, setCurrentPage] = useState('home');
 
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <ProductList products={filteredProducts} addToCart={addToCart} openQuickView={openQuickView} />;
-      case 'cart':
-        return <Cart cart={cart} removeFromCart={removeFromCart} updateQuantity={updateQuantity} setCurrentPage={setCurrentPage} />;
-      case 'payment':
-        return <PaymentPage processPayment={processPayment} setCurrentPage={setCurrentPage} cartTotal={cart.reduce((sum, item) => sum + item.price * item.quantity, 0)} />;
-      case 'orderConfirmation':
-        return <OrderConfirmationPage setCurrentPage={setCurrentPage} />;
-      case 'register':
-        return <Registration handleRegister={handleRegister} />;
-      case 'login':
-        return <Login handleLogin={handleLogin} />;
-      case 'campaigns':
-        return <CampaignsPage campaigns={mockCampaigns} />;
+        return <Home setCurrentPage={setCurrentPage} />;
+      case 'services':
+        return <Services />;
+      case 'about':
+        return <About />;
+      case 'contact':
+        return <Contact />;
+      case 'blog':
+        return <Blog setCurrentPage={setCurrentPage} />;
+      case 'blogPostDetail':
+        return <BlogPostDetail />;
+      case 'media':
+        return <Media setCurrentPage={setCurrentPage} />;
+      case 'podcasts':
+        return <Podcasts />;
+      case 'terraformDetail':
+        return <TerraformDetail />;
+      case 'ansibleDetail':
+        return <AnsibleDetail />;
+      case 'helmDetail':
+        return <HelmDetail />;
+      case 'kubernetesDetail':
+        return <KubernetesDetail />;
+      case 'dockerDetail':
+        return <DockerDetail />;
+      case 'githubActionsDetail':
+        return <GithubActionsDetail />;
       default:
-        return <ProductList products={filteredProducts} addToCart={addToCart} openQuickView={openQuickView} />;
+        return <Home setCurrentPage={setCurrentPage} />;
     }
   };
 
   return (
-    <AppContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, user, handleLogin, handleRegister, handleLogout, setCurrentPage }}>
-      <div className="min-h-screen bg-gray-900 text-white font-inter flex flex-col">
-        <header className="bg-gray-800 shadow-2xl py-4 px-6 flex flex-col md:flex-row justify-between items-center rounded-b-3xl border-b-2 border-green-700 z-10 sticky top-0 w-full">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-green-400 cursor-pointer mb-4 md:mb-0 transform hover:scale-105 transition duration-300 drop-shadow-lg" onClick={() => { setCurrentPage('home'); setSelectedCategory(null); setSelectedSubCategory(null); }}>
-            Mustafa'nın Mağazası
-          </h1>
-          <div className="flex items-center space-x-4 w-full md:w-auto mb-4 md:mb-0">
-            <div className="relative w-full md:w-80">
-              <input
-                type="text"
-                placeholder="Ürün Ara..."
-                className="w-full pl-10 pr-4 py-2 rounded-full bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-              </svg>
-            </div>
-          </div>
-          <nav className="flex flex-wrap justify-center space-x-2 md:space-x-6">
-            <NavItem onClick={() => { setCurrentPage('home'); setSelectedCategory(null); setSelectedSubCategory(null); }}>Ürünler</NavItem>
-            <NavItem onClick={() => setCurrentPage('campaigns')}>Kampanyalar</NavItem> {/* New Nav Item */}
-            <NavItem onClick={() => setCurrentPage('cart')}>
-              Sepet ({cart.reduce((total, item) => total + item.quantity, 0)})
-            </NavItem>
-            {user ? (
-              <NavItem onClick={handleLogout}>Çıkış Yap ({user.email})</NavItem>
-            ) : (
-              <>
-                <NavItem onClick={() => setCurrentPage('login')}>Giriş Yap</NavItem>
-                <NavItem onClick={() => setCurrentPage('register')}>Kayıt Ol</NavItem>
-              </>
-            )}
-          </nav>
-        </header>
-
-        {/* Global Message Display */}
-        <div className={`fixed top-6 left-1/2 -translate-x-1/2 p-4 rounded-xl shadow-2xl z-50 transition-all duration-700 ease-in-out transform 
-                         ${showMessage ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-20 scale-90'}
-                         ${message.includes('başarılı') || message.includes('eklendi') ? 'bg-gradient-to-r from-green-600 to-green-800' : 'bg-gradient-to-r from-red-600 to-red-800'}
-                         border border-gray-700`}>
-          <p className="text-white text-lg font-semibold text-center">{message}</p>
-        </div>
-
-        <main className="container mx-auto p-6 flex-grow flex flex-col lg:flex-row space-y-8 lg:space-y-0 lg:space-x-8">
-          {/* Category Navigation Sidebar */}
-          {currentPage === 'home' && ( // Only show categories on home page
-            <CategoryNavigation
-              categories={categories}
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
-              selectedSubCategory={selectedSubCategory}
-              setSelectedSubCategory={setSelectedSubCategory}
-            />
-          )}
-          
-          <div className="flex-grow">
-            {renderPage()}
-          </div>
-        </main>
-
-        <footer className="bg-gray-800 py-6 px-6 text-center text-gray-400 mt-12 rounded-t-3xl shadow-2xl border-t-2 border-green-700">
-          <p className="text-sm md:text-base">&copy; 2025 Mustafa'nın Mağazası. Tüm hakları saklıdır.</p>
-          <p className="text-xs md:text-sm mt-1">Geliştirici: Mustafa (DevOps Mühendisi)</p>
-        </footer>
-
-        {showQuickViewModal && selectedProduct && (
-          <QuickViewModal product={selectedProduct} onClose={closeQuickView} addToCart={addToCart} />
-        )}
-      </div>
-    </AppContext.Provider>
-  );
-};
-
-// --- NavItem Component ---
-const NavItem = ({ children, onClick }) => (
-  <button
-    onClick={onClick}
-    className="relative text-base md:text-lg font-medium text-gray-300 py-2 px-3 md:px-4 rounded-xl transition-all duration-300 ease-in-out
-               hover:text-green-300 hover:bg-gray-700 active:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800
-               transform hover:scale-105 before:absolute before:bottom-0 before:left-1/2 before:-translate-x-1/2 before:w-0 before:h-0.5 before:bg-green-400 before:rounded-full before:transition-all before:duration-300 hover:before:w-2/3"
-  >
-    {children}
-  </button>
-);
-
-// --- CategoryNavigation Component ---
-const CategoryNavigation = ({ categories, selectedCategory, setSelectedCategory, selectedSubCategory, setSelectedSubCategory }) => {
-  return (
-    <aside className="w-full lg:w-64 p-6 bg-gray-800 rounded-2xl shadow-xl border border-gray-700 flex-shrink-0">
-      <h3 className="text-2xl font-bold text-green-300 mb-6 pb-2 border-b border-gray-700">Kategoriler</h3>
-      <ul className="space-y-4">
-        <li className="mb-2">
-          <button
-            onClick={() => { setSelectedCategory(null); setSelectedSubCategory(null); }}
-            className={`block w-full text-left text-lg font-semibold rounded-lg py-2 px-3 transition duration-200
-                       ${!selectedCategory ? 'bg-green-700 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-green-300'} focus:outline-none focus:ring-2 focus:ring-green-500`}
-          >
-            Tüm Ürünler
-          </button>
-        </li>
-        {Object.entries(categories).map(([categoryName, subCategories]) => (
-          <li key={categoryName} className="mb-4">
-            <button
-              onClick={() => { setSelectedCategory(categoryName); setSelectedSubCategory(null); }}
-              className={`block w-full text-left text-xl font-bold rounded-lg py-2 px-3 transition duration-200
-                         ${selectedCategory === categoryName ? 'bg-green-600 text-white shadow-md' : 'text-green-300 hover:bg-gray-700 hover:text-green-200'} focus:outline-none focus:ring-2 focus:ring-green-500`}
-            >
-              {categoryName}
-            </button>
-            {selectedCategory === categoryName && (
-              <ul className="ml-4 mt-2 space-y-2 border-l border-gray-600 pl-4">
-                {subCategories.map((subCategoryName) => (
-                  <li key={subCategoryName}>
-                    <button
-                      onClick={() => setSelectedSubCategory(subCategoryName)}
-                      className={`block w-full text-left text-md rounded-lg py-2 px-3 transition duration-200
-                                 ${selectedSubCategory === subCategoryName ? 'bg-gray-700 text-green-400 shadow-sm' : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'} focus:outline-none focus:ring-2 focus:ring-green-500`}
-                    >
-                      {subCategoryName}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </ul>
-    </aside>
-  );
-};
-
-
-// --- ProductList Component ---
-const ProductList = ({ products, addToCart, openQuickView }) => (
-  <section className="py-8">
-    <h2 className="text-3xl md:text-5xl font-extrabold text-center text-green-300 mb-10 tracking-wide drop-shadow-md">Ürünlerimiz</h2>
-    {products.length === 0 ? (
-        <p className="text-center text-xl text-gray-400">Aradığınız kriterlere uygun ürün bulunamadı.</p>
-    ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-            {products.map((product) => (
-                <ProductCard key={product.id} product={product} addToCart={addToCart} openQuickView={openQuickView} />
-            ))}
-        </div>
-    )}
-  </section>
-);
-
-// --- ProductCard Component ---
-const ProductCard = ({ product, addToCart, openQuickView }) => (
-  <div className="group bg-gray-800 rounded-2xl shadow-xl overflow-hidden transform hover:scale-105 transition duration-300 ease-in-out p-6 flex flex-col items-center border border-gray-700 hover:border-green-500 relative">
-    {product.isNew && (
-      <span className="absolute top-4 left-4 bg-yellow-500 text-gray-900 text-xs font-bold px-3 py-1 rounded-full shadow-md z-10 animate-bounce-slow">
-        YENİ ÜRÜN
-      </span>
-    )}
-    <img
-      src={product.image}
-      alt={product.name}
-      className="w-full h-48 object-cover mb-4 rounded-xl border border-gray-700 shadow-md group-hover:brightness-90 transition-all duration-300"
-      onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/400x300/4b5563/ffffff?text=${encodeURIComponent(product.name)}`; }}
-    />
-    <h3 className="text-xl md:text-2xl font-semibold text-green-200 mb-2 text-center leading-tight">{product.name}</h3>
-    <div className="flex items-center text-yellow-400 mb-2">
-      {/* Star rating placeholder */}
-      {'★'.repeat(Math.floor(Math.random() * 3) + 3)}{'☆'.repeat(5 - (Math.floor(Math.random() * 3) + 3))}
-      <span className="text-sm text-gray-400 ml-2">(123 yorum)</span>
+    <div className="d-flex flex-column min-vh-100">
+      <Header setCurrentPage={setCurrentPage} />
+      <main className="flex-grow-1">
+        {renderPage()}
+      </main>
+      <Footer />
     </div>
-    <p className="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400 mb-4 drop-shadow-md">{product.price.toFixed(2)} TL</p>
-    <button
-      onClick={() => addToCart(product)}
-      className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-    >
-      Sepete Ekle
-    </button>
-    {/* Quick View overlay on hover */}
-    <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl">
-        <button
-            onClick={(e) => { e.stopPropagation(); openQuickView(product); }} // Prevent add to cart when clicking quick view
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-            Hızlı Bakış
+  );
+};
+
+// Header Component
+const Header = ({ setCurrentPage }) => {
+  return (
+    <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow-lg sticky-top">
+      <div className="container-fluid">
+        <a className="navbar-brand fs-3 fw-bold text-warning animate__animated animate__bounceInLeft" href="/" onClick={() => setCurrentPage('home')}>
+          Cloud DevOps Lösungen
+        </a>
+        <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span className="navbar-toggler-icon"></span>
         </button>
-    </div>
-  </div>
-);
+        <div className="collapse navbar-collapse" id="navbarNav">
+          <ul className="navbar-nav ms-auto">
+            <NavItem onClick={() => setCurrentPage('home')}>Startseite</NavItem>
+            <NavItem onClick={() => setCurrentPage('services')}>Dienstleistungen</NavItem>
+            <NavItem onClick={() => setCurrentPage('blog')}>Blog</NavItem>
+            <NavItem onClick={() => setCurrentPage('podcasts')}>Podcasts</NavItem>
+            <NavItem onClick={() => setCurrentPage('media')}>Medien</NavItem>
+            <NavItem onClick={() => setCurrentPage('about')}>Über Uns</NavItem>
+            <NavItem onClick={() => setCurrentPage('contact')}>Kontakt</NavItem>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  );
+};
 
-// --- Cart Component ---
-const Cart = ({ cart, removeFromCart, updateQuantity, setCurrentPage }) => {
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+// NavItem Component
+const NavItem = ({ children, onClick }) => {
+  return (
+    <li className="nav-item">
+      <button className="nav-link btn btn-link text-white px-3 py-2 rounded-3 transition-all duration-300 hover:bg-secondary hover:text-white" onClick={onClick}>
+        {children}
+      </button>
+    </li>
+  );
+};
+
+// Home Page Component
+const Home = ({ setCurrentPage }) => {
+  const servicesData = [
+    {
+      title: "Cloud-Infrastruktur-Setup",
+      description: "Design und Implementierung robuster und skalierbarer AWS-Infrastrukturen.",
+      icon: "fas fa-cloud",
+      color: "text-primary"
+    },
+    {
+      title: "CI/CD Pipeline-Automatisierung",
+      description: "Automatisieren Sie Ihre Softwarebereitstellung mit modernen CI/CD-Praktiken.",
+      icon: "fas fa-cogs",
+      color: "text-success"
+    },
+    {
+      title: "Containerisierung mit Docker & Kubernetes",
+      description: "Optimieren Sie Ihre Anwendungen mit Container-Technologien.",
+      icon: "fas fa-box",
+      color: "text-info"
+    }
+  ];
+
+  const cloudLogos = [
+    { name: "AWS", src: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Amazon_Web_Services_Logo.svg/2560px-Amazon_Web_Services_Logo.svg.png" },
+    { name: "Azure", src: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Microsoft_Azure.svg/1200px-Microsoft_Azure.svg.png" },
+    { name: "Google Cloud", src: "https://cloud.google.com/_static/cloud/images/social-icon-google-cloud-1200-630.png" }
+  ];
 
   return (
-    <section className="py-8">
-      <h2 className="text-3xl md:text-5xl font-extrabold text-center text-green-300 mb-10 tracking-wide drop-shadow-md">Sepetiniz</h2>
-      {cart.length === 0 ? (
-        <div className="bg-gray-800 rounded-2xl shadow-xl p-8 text-center border border-gray-700">
-          <p className="text-xl md:text-2xl text-gray-400">Sepetinizde henüz ürün bulunmamaktadır.</p>
-          <p className="text-md md:text-lg text-gray-500 mt-2">Hemen harika ürünlerimizi keşfedin!</p>
-          <button
-            onClick={() => setCurrentPage('home')}
-            className="mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            Alışverişe Başla
-          </button>
+    <>
+      {/* Hero Section */}
+      <section 
+        className="hero-section text-center text-white py-5 d-flex align-items-center min-vh-75 position-relative bg-primary"
+        style={{ 
+          // backgroundImage: 'url(https://placehold.co/1920x1080/0d6efd/ffffff?text=Cloud+Background)', // Kaldırıldı
+          // backgroundSize: 'cover', 
+          // backgroundPosition: 'center',
+          '--bs-bg-opacity': .9, // Daha belirgin bir arka plan için opaklık
+          zIndex: 1
+        }}
+      >
+        <div className="position-absolute top-0 start-0 w-100 h-100 bg-dark" style={{opacity: 0.6, zIndex: -1}}></div> {/* Overlay */}
+        <div className="container animate__animated animate__fadeInUp">
+          <h1 className="display-1 fw-bold mb-4 animate__animated animate__fadeInDown animate__delay-1s">Ihre Zukunft in der Cloud beginnt hier</h1>
+          <p className="lead mb-5 animate__animated animate__fadeInUp animate__delay-2s">
+            Wir sind Ihr Partner für innovative AWS Cloud- und DevOps-Lösungen.
+            Optimieren Sie Ihre Infrastruktur, beschleunigen Sie Ihre Entwicklung und sichern Sie Ihre Daten.
+          </p>
+          <div className="d-grid gap-2 d-md-flex justify-content-md-center animate__animated animate__fadeInUp animate__delay-3s">
+            <button className="btn btn-success btn-lg px-4 me-md-2 animate__animated animate__pulse animate__infinite" onClick={() => setCurrentPage('services')}>
+              Unsere Dienstleistungen <i className="fas fa-arrow-right ms-2"></i>
+            </button>
+            <button className="btn btn-outline-light btn-lg px-4" onClick={() => setCurrentPage('contact')}>
+              Kontaktieren Sie Uns <i className="fas fa-envelope ms-2"></i>
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-700">
-          {cart.map((item) => (
-            <div key={item.id} className="flex flex-col md:flex-row items-center justify-between border-b border-gray-700 py-4 md:py-6 last:border-b-0">
-              <div className="flex items-center space-x-4 mb-4 md:mb-0">
-                <img src={item.image} alt={item.name} className="w-24 h-24 object-cover rounded-lg shadow-md border border-gray-600" />
-                <div>
-                  <h3 className="text-xl md:text-2xl font-semibold text-green-200">{item.name}</h3>
-                  <p className="text-lg md:text-xl text-gray-400">{item.price.toFixed(2)} TL</p>
+      </section>
+
+      {/* Services Preview Section */}
+      <section className="services-preview-section py-5 bg-light">
+        <div className="container">
+          <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Unsere Kernkompetenzen</h2>
+          <div className="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {servicesData.map((service, index) => (
+              <div className="col animate__animated animate__fadeInUp" style={{animationDelay: `${0.2 * index}s`}} key={index}>
+                <div className="card h-100 shadow-sm border-0 transform-on-hover">
+                  <div className="card-body text-center p-4">
+                    <i className={`${service.icon} fa-4x ${service.color} mb-3 animate__animated animate__bounceIn`}></i>
+                    <h3 className="card-title fs-4 fw-bold mb-2">{service.title}</h3>
+                    <p className="card-text text-muted">{service.description}</p>
+                    <button className="btn btn-link text-primary" onClick={() => setCurrentPage('services')}>Mehr erfahren <i className="fas fa-chevron-right ms-1"></i></button>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                  disabled={item.quantity <= 1}
-                  className="bg-gray-700 text-white font-bold py-2 px-3 rounded-md shadow-sm hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  min="1"
-                  value={item.quantity}
-                  onChange={(e) => updateQuantity(item.id, parseInt(e.target.value))}
-                  className="w-16 p-2 text-center bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 text-lg"
-                />
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                  className="bg-gray-700 text-white font-bold py-2 px-3 rounded-md shadow-sm hover:bg-gray-600 transition duration-200 focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  +
-                </button>
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:-translate-y-0.5 active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800 ml-4"
-                >
-                  Kaldır
-                </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Cloud Provider Logos Section */}
+      <section className="cloud-logos-section py-5 bg-white">
+        <div className="container">
+          <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Unsere Cloud-Partner</h2>
+          <div className="row justify-content-center align-items-center g-4">
+            {cloudLogos.map((logo, index) => (
+              <div className="col-6 col-md-3 text-center animate__animated animate__zoomIn" style={{animationDelay: `${0.2 * index}s`}} key={index}>
+                <img src={logo.src} alt={logo.name} className="img-fluid" style={{maxHeight: '80px'}} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* About Preview Section - Mustafa Salik & Location */}
+      <section className="about-preview-section py-5 bg-light">
+        <div className="container text-center">
+          <h2 className="display-4 fw-bold mb-4 text-dark animate__animated animate__fadeIn">Wer wir sind</h2>
+          <p className="lead text-muted mb-3 animate__animated animate__fadeInUp">
+            Gegründet von **Mustafa Salik**, sind wir ein Team von passionierten DevOps- und Cloud-Experten.
+          </p>
+          <p className="fs-5 text-muted animate__animated animate__fadeInUp animate__delay-1s">
+            Unser Hauptsitz befindet sich in **BERLIN**, Deutschland.
+          </p>
+          <button className="btn btn-outline-primary btn-lg mt-4 animate__animated animate__zoomIn" onClick={() => setCurrentPage('about')}>
+            Mehr über uns <i className="fas fa-info-circle ms-2"></i>
+          </button>
+        </div>
+      </section>
+
+      {/* Call to Action Section */}
+      <section className="cta-section bg-primary text-white py-5 text-center">
+        <div className="container animate__animated animate__fadeInUp">
+          <h2 className="display-4 fw-bold mb-4">Bereit für Ihre Cloud-Transformation?</h2>
+          <p className="lead mb-5">Kontaktieren Sie uns noch heute für eine unverbindliche Beratung.</p>
+          <button className="btn btn-light btn-lg px-5 animate__animated animate__bounce animate__infinite" onClick={() => setCurrentPage('contact')}>
+            Jetzt Kontakt Aufnehmen <i className="fas fa-phone-alt ms-2"></i>
+          </button>
+        </div>
+      </section>
+    </>
+  );
+};
+
+// Services Page Component
+const Services = () => {
+  const services = [
+    {
+      title: "Cloud-Infrastruktur-Setup",
+      description: "Wir entwerfen und implementieren robuste, skalierbare und sichere AWS-Infrastrukturen, die perfekt auf Ihre Geschäftsanforderungen zugeschnitten sind. Von der Netzwerkarchitektur bis zur Datenbankintegration – wir sorgen für eine solide Grundlage für Ihre Anwendungen.",
+      icon: "fas fa-cloud",
+      color: "text-primary"
+    },
+    {
+      title: "CI/CD Pipeline-Automatisierung",
+      description: "Beschleunigen Sie Ihre Softwarebereitstellung mit vollständig automatisierten CI/CD-Pipelines. Wir implementieren Best Practices für kontinuierliche Integration, Lieferung und Bereitstellung, um Ihre Entwicklungszyklen zu optimieren und Fehler zu minimieren.",
+      icon: "fas fa-cogs",
+      color: "text-success"
+    },
+    {
+      title: "Containerisierung mit Docker & Kubernetes",
+      description: "Nutzen Sie die Vorteile der Containerisierung für Ihre Anwendungen. Wir unterstützen Sie bei der Migration zu Docker, der Orchestrierung mit Kubernetes und der Optimierung Ihrer containerisierten Workloads für maximale Effizienz und Portabilität.",
+      icon: "fas fa-box",
+      color: "text-info"
+    },
+    {
+      title: "Überwachung & Logging",
+      description: "Implementieren Sie umfassende Überwachungs- und Logging-Lösungen, um die Leistung und Verfügbarkeit Ihrer Cloud-Ressourcen zu gewährleisten. Wir helfen Ihnen, Metriken zu sammeln, Logs zu analysieren und Alarme einzurichten, um proaktiv auf Probleme reagieren zu können.",
+      icon: "fas fa-chart-line",
+      color: "text-warning"
+    },
+    {
+      title: "Sicherheits- & Compliance-Audits",
+      description: "Wir führen detaillierte Sicherheitsaudits Ihrer Cloud-Umgebung durch und stellen sicher, dass Sie alle relevanten Compliance-Standards (z.B. DSGVO, ISO 27001) erfüllen. Schützen Sie Ihre Daten und Infrastruktur vor Bedrohungen.",
+      icon: "fas fa-shield-alt",
+      color: "text-danger"
+    },
+    {
+      title: "Managed Cloud Services",
+      description: "Konzentrieren Sie sich auf Ihr Kerngeschäft, während wir Ihre Cloud-Infrastruktur vollständig verwalten. Unser Team bietet 24/7-Support, proaktive Wartung, Kostenoptimierung und Performance-Tuning für Ihre AWS-Umgebung.",
+      icon: "fas fa-hands-helping",
+      color: "text-secondary"
+    }
+  ];
+
+  return (
+    <section className="services-section py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Unsere Dienstleistungen</h2>
+        <div className="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+          {services.map((service, index) => (
+            <div className="col animate__animated animate__fadeInUp" style={{animationDelay: `${0.2 * index}s`}} key={index}>
+              <div className="card h-100 shadow-sm border-0 transform-on-hover">
+                <div className="card-body text-center p-4">
+                  <i className={`${service.icon} fa-4x ${service.color} mb-3 animate__animated animate__bounceIn`}></i>
+                  <h3 className="card-title fs-4 fw-bold mb-2">{service.title}</h3>
+                  <p className="card-text text-muted">{service.description}</p>
+                </div>
               </div>
             </div>
           ))}
-          <div className="text-right text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400 mt-8 pt-4 border-t border-gray-700 drop-shadow-md">
-            Toplam: {total.toFixed(2)} TL
-          </div>
-          <div className="text-right mt-6">
-            <button
-              onClick={() => setCurrentPage('payment')}
-              disabled={cart.length === 0}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-8 rounded-lg shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Ödeme Yap
-            </button>
-          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 };
 
-// --- PaymentPage Component ---
-const PaymentPage = ({ processPayment, setCurrentPage, cartTotal }) => {
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentError, setPaymentError] = useState('');
-  const [cardDetails, setCardDetails] = useState({
-    cardNumber: '',
-    expiryDate: '',
-    cvv: ''
-  });
-  const [billingAddress, setBillingAddress] = useState({
-    firstName: '',
-    lastName: '',
-    address1: '',
-    address2: '',
-    city: '',
-    postalCode: ''
+// About Page Component
+const About = () => {
+  return (
+    <section className="about-section py-5 bg-white">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Über Uns</h2>
+        <div className="row align-items-center">
+          <div className="col-lg-6 mb-4 mb-lg-0 animate__animated animate__fadeInLeft">
+            <img src="https://placehold.co/600x400/0d6efd/ffffff?text=Unser+Team" alt="Unser Team" className="img-fluid rounded shadow-lg" />
+          </div>
+          <div className="col-lg-6 animate__animated animate__fadeInRight">
+            <p className="lead text-muted mb-4">
+              Wir sind ein engagiertes Team von Cloud- und DevOps-Experten mit einer Leidenschaft für die Transformation von Unternehmen durch innovative Technologielösungen. Seit unserer Gründung haben wir unzähligen Kunden geholfen, ihre Infrastruktur zu optimieren, die Bereitstellung zu beschleunigen und die Sicherheit in der AWS Cloud zu verbessern.
+            </p>
+            <p className="text-muted">
+              Unser Ansatz ist kundenorientiert und lösungsorientiert. Wir arbeiten eng mit Ihnen zusammen, um Ihre spezifischen Anforderungen zu verstehen und maßgeschneiderte Strategien zu entwickeln, die nicht nur die aktuellen Herausforderungen bewältigen, sondern auch zukünftiges Wachstum und Innovation ermöglichen. Vertrauen Sie auf unsere Expertise, um Ihre Cloud-Reise erfolgreich zu gestalten.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+// Contact Page Component
+const Contact = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    message: ''
   });
 
-  const handleCardDetailChange = (e) => {
+  const handleChange = (e) => {
     const { name, value } = e.target;
-    setCardDetails(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleBillingAddressChange = (e) => {
-    const { name, value } = e.target;
-    setBillingAddress(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handlePaymentSubmit = async () => {
-    setPaymentError('');
-    if (!selectedPaymentMethod) {
-      setPaymentError('Lütfen bir ödeme yöntemi seçin.');
-      return;
-    }
-
-    if (selectedPaymentMethod === 'credit-card') {
-      if (!cardDetails.cardNumber || !cardDetails.expiryDate || !cardDetails.cvv) {
-        setPaymentError('Lütfen kart bilgilerinizi eksiksiz girin.');
-        return;
-      }
-      // Basic mock validation for card details
-      if (cardDetails.cardNumber.length < 16 || cardDetails.expiryDate.length < 5 || cardDetails.cvv.length < 3) {
-        setPaymentError('Geçersiz kart bilgileri.');
-        return;
-      }
-    }
-
-    if (!billingAddress.firstName || !billingAddress.lastName || !billingAddress.address1 || !billingAddress.city || !billingAddress.postalCode) {
-      setPaymentError('Lütfen fatura adresinizi eksiksiz doldurun.');
-      return;
-    }
-
-    setIsProcessing(true);
-    try {
-      await processPayment();
-    } catch (error) {
-      setPaymentError('Ödeme işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
-    } finally {
-      setIsProcessing(false);
-    }
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    // Here you would typically send the form data to a backend API
+    console.log('Form submitted:', formData);
+    alert('Vielen Dank für Ihre Nachricht! Wir werden uns in Kürze bei Ihnen melden.');
+    setFormData({ name: '', email: '', message: '' }); // Clear form
   };
 
   return (
-    <section className="py-8 max-w-3xl mx-auto bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-700">
-      <h2 className="text-3xl md:text-4xl font-extrabold text-center text-green-300 mb-8 drop-shadow-md">Ödeme Sayfası</h2>
-      
-      <div className="mb-6 text-center">
-        <p className="text-xl text-gray-300 font-semibold mb-4">Toplam Tutar: <span className="text-yellow-300 text-3xl">{cartTotal.toFixed(2)} TL</span></p>
+    <section className="contact-section py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Kontaktieren Sie Uns</h2>
+        <div className="row justify-content-center">
+          <div className="col-lg-8 animate__animated animate__fadeInUp">
+            <div className="card shadow-lg border-0 p-4">
+              <div className="card-body">
+                <form onSubmit={handleSubmit}>
+                  <div className="mb-3">
+                    <label htmlFor="name" className="form-label">Name</label>
+                    <input type="text" className="form-control" id="name" name="name" value={formData.name} onChange={handleChange} required />
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="email" className="form-label">E-Mail</label>
+                    <input type="email" className="form-control" id="email" name="email" value={formData.email} onChange={handleChange} required />
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="message" className="form-label">Nachricht</label>
+                    <textarea className="form-control" id="message" name="message" rows="5" value={formData.message} onChange={handleChange} required></textarea>
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-lg w-100">Nachricht Senden <i className="fas fa-paper-plane ms-2"></i></button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="text-center mt-5 animate__animated animate__fadeInUp animate__delay-1s">
+          <p className="lead text-muted">Oder finden Sie uns hier:</p>
+          <p className="fs-5 text-dark">
+            <i className="fas fa-map-marker-alt me-2 text-primary"></i> Musterstraße 123, 12345 Musterstadt, Deutschland
+          </p>
+          <p className="fs-5 text-dark">
+            <i className="fas fa-phone me-2 text-primary"></i> +49 123 456789
+          </p>
+          <p className="fs-5 text-dark">
+            <i className="fas fa-envelope me-2 text-primary"></i> info@clouddevops-loesungen.de
+          </p>
+        </div>
       </div>
+    </section>
+  );
+};
 
-      {/* Payment Method Selection */}
-      <div className="space-y-4 mb-8">
-        <h3 className="text-2xl font-semibold text-gray-200 border-b border-gray-700 pb-2 mb-4">Ödeme Yöntemi Seçin</h3>
-        {[
-          { id: 'credit-card', name: 'Kredi / Banka Kartı', icon: '💳' },
-          { id: 'paypal', name: 'PayPal', icon: '🅿️' },
-          { id: 'eft', name: 'EFT / Havale', icon: '🏦' },
-        ].map((method) => (
-          <div key={method.id} className={`flex items-center p-4 rounded-lg shadow-sm cursor-pointer transition-colors duration-200
-            ${selectedPaymentMethod === method.id ? 'bg-green-700 border-green-500' : 'bg-gray-700 hover:bg-gray-600 border-gray-600'} border-2`}>
-            <input
-              type="radio"
-              id={method.id}
-              name="paymentMethod"
-              value={method.id}
-              checked={selectedPaymentMethod === method.id}
-              onChange={() => setSelectedPaymentMethod(method.id)}
-              className="form-radio h-5 w-5 text-green-500 border-gray-500 focus:ring-green-500 transition-colors duration-200"
-            />
-            <label htmlFor={method.id} className="ml-4 text-xl font-medium text-gray-100 cursor-pointer flex items-center">
-              <span className="mr-2">{method.icon}</span> {method.name}
-            </label>
+// Blog Page Component
+const Blog = ({ setCurrentPage }) => {
+  const blogPosts = [
+    {
+      id: 1,
+      title: "Die Vorteile von AWS für Ihr Unternehmen",
+      date: "2025-06-20",
+      author: "Max Mustermann",
+      summary: "Erfahren Sie, wie AWS Cloud-Lösungen Ihrem Unternehmen helfen können, Skalierbarkeit, Sicherheit und Kosteneffizienz zu erreichen.",
+      content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+      series: "AWS Grundlagen"
+    },
+    {
+      id: 2,
+      title: "CI/CD Best Practices mit GitLab und AWS",
+      date: "2025-06-15",
+      author: "Anna Schmidt",
+      summary: "Ein Leitfaden zur Implementierung robuster CI/CD-Pipelines mit GitLab auf AWS.",
+      content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+      series: "CI/CD Pipelines"
+    },
+    {
+      id: 3,
+      title: "Sicherheit in der Cloud: Ein umfassender Ansatz",
+      date: "2025-06-10",
+      author: "Dr. Klaus Müller",
+      summary: "Wichtige Überlegungen und Strategien zur Gewährleistung der Sicherheit Ihrer Cloud-Infrastruktur.",
+      content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+      series: "Cloud Sicherheit"
+    },
+    {
+      id: 4,
+      title: "Ansible für Anfänger: Erste Schritte zur Automatisierung",
+      date: "2025-06-05",
+      author: "Max Mustermann",
+      summary: "Lernen Sie die Grundlagen von Ansible und wie Sie Ihre ersten Automatisierungs-Playbooks erstellen.",
+      content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+      series: "Ansible Serie"
+    },
+    {
+      id: 5,
+      title: "Kubernetes Deployment Strategien",
+      date: "2025-05-28",
+      author: "Anna Schmidt",
+      summary: "Verschiedene Deployment-Strategien in Kubernetes verstehen und anwenden für reibungslose Updates.",
+      content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+      series: "Kubernetes Serie"
+    }
+  ];
+
+  const [selectedPost, setSelectedPost] = useState(null);
+
+  if (selectedPost) {
+    return <BlogPostDetail post={selectedPost} onBack={() => setSelectedPost(null)} />;
+  }
+
+  // Group posts by series
+  const postsBySeries = blogPosts.reduce((acc, post) => {
+    (acc[post.series] = acc[post.series] || []).push(post);
+    return acc;
+  }, {});
+
+  return (
+    <section className="blog-section py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Unser Blog</h2>
+        
+        {Object.entries(postsBySeries).map(([seriesName, posts]) => (
+          <div key={seriesName} className="mb-5">
+            <h3 className="fs-2 fw-bold mb-4 text-primary animate__animated animate__fadeInLeft">{seriesName}</h3>
+            <div className="row g-4">
+              {posts.map(post => (
+                <div className="col-md-6 col-lg-4 animate__animated animate__fadeInUp" style={{animationDelay: `${0.2 * post.id}s`}} key={post.id}>
+                  <div className="card h-100 shadow-sm border-0 transform-on-hover cursor-pointer" onClick={() => setSelectedPost(post)}>
+                    <div className="card-body">
+                      <h4 className="card-title fs-4 fw-bold mb-2">{post.title}</h4>
+                      <p className="card-subtitle mb-2 text-muted">
+                        <i className="fas fa-calendar-alt me-2"></i>{post.date} | <i className="fas fa-user me-2"></i>{post.author}
+                      </p>
+                      <p className="card-text">{post.summary}</p>
+                      <button className="btn btn-link text-primary">Weiterlesen <i className="fas fa-arrow-right ms-2"></i></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
+    </section>
+  );
+};
 
-      {/* Credit Card Details (Conditional) */}
-      {selectedPaymentMethod === 'credit-card' && (
-        <div className="space-y-6 mb-8 bg-gray-700 p-6 rounded-lg shadow-inner border border-gray-600">
-          <h3 className="text-2xl font-semibold text-gray-200 border-b border-gray-600 pb-2 mb-4">Kart Bilgileri</h3>
-          <InputField
-            label="Kart Numarası"
-            id="cardNumber"
-            name="cardNumber"
-            type="text"
-            placeholder="XXXX XXXX XXXX XXXX"
-            value={cardDetails.cardNumber}
-            onChange={handleCardDetailChange}
-            required
-            error={paymentError.includes('kart bilgileri') ? paymentError : ''}
-          />
-          <div className="flex space-x-4">
-            <div className="w-1/2">
-              <InputField
-                label="Son Kullanma Tarihi (AA/YY)"
-                id="expiryDate"
-                name="expiryDate"
-                type="text"
-                placeholder="AA/YY"
-                value={cardDetails.expiryDate}
-                onChange={handleCardDetailChange}
-                required
-                error={paymentError.includes('kart bilgileri') ? paymentError : ''}
-              />
-            </div>
-            <div className="w-1/2">
-              <InputField
-                label="CVV"
-                id="cvv"
-                name="cvv"
-                type="text"
-                placeholder="XXX"
-                value={cardDetails.cvv}
-                onChange={handleCardDetailChange}
-                required
-                error={paymentError.includes('kart bilgileri') ? paymentError : ''}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Billing Address */}
-      <div className="space-y-6 mb-8 bg-gray-700 p-6 rounded-lg shadow-inner border border-gray-600">
-        <h3 className="text-2xl font-semibold text-gray-200 border-b border-gray-600 pb-2 mb-4">Fatura Adresi</h3>
-        <div className="flex space-x-4">
-          <div className="w-1/2">
-            <InputField
-              label="Ad"
-              id="firstName"
-              name="firstName"
-              type="text"
-              placeholder="Adınız"
-              value={billingAddress.firstName}
-              onChange={handleBillingAddressChange}
-              required
-              error={paymentError.includes('fatura adresinizi') ? paymentError : ''}
-            />
-          </div>
-          <div className="w-1/2">
-            <InputField
-              label="Soyad"
-              id="lastName"
-              name="lastName"
-              type="text"
-              placeholder="Soyadınız"
-              value={billingAddress.lastName}
-              onChange={handleBillingAddressChange}
-              required
-              error={paymentError.includes('fatura adresinizi') ? paymentError : ''}
-            />
-          </div>
-        </div>
-        <InputField
-          label="Adres 1"
-          id="address1"
-          name="address1"
-          type="text"
-          placeholder="Cadde, Sokak No"
-          value={billingAddress.address1}
-          onChange={handleBillingAddressChange}
-          required
-          error={paymentError.includes('fatura adresinizi') ? paymentError : ''}
-        />
-        <InputField
-          label="Adres 2 (Opsiyonel)"
-          id="address2"
-          name="address2"
-          type="text"
-          placeholder="Bina, Apartman No, Daire"
-          value={billingAddress.address2}
-          onChange={handleBillingAddressChange}
-        />
-        <div className="flex space-x-4">
-          <div className="w-1/2">
-            <InputField
-              label="Şehir"
-              id="city"
-              name="city"
-              type="text"
-              placeholder="Şehriniz"
-              value={billingAddress.city}
-              onChange={handleBillingAddressChange}
-              required
-              error={paymentError.includes('fatura adresinizi') ? paymentError : ''}
-            />
-          </div>
-          <div className="w-1/2">
-            <InputField
-              label="Posta Kodu"
-              id="postalCode"
-              name="postalCode"
-              type="text"
-              placeholder="XXXXX"
-              value={billingAddress.postalCode}
-              onChange={handleBillingAddressChange}
-              required
-              error={paymentError.includes('fatura adresinizi') ? paymentError : ''}
-            />
-          </div>
-        </div>
-      </div>
-
-      {paymentError && <p className="text-red-500 text-sm italic mb-4 text-center">{paymentError}</p>}
-
-      <div className="flex justify-end space-x-4">
-        <button
-          onClick={() => setCurrentPage('cart')}
-          className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:-translate-y-0.5 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-500"
-        >
-          Geri Dön
+// Blog Post Detail Component
+const BlogPostDetail = ({ post, onBack }) => {
+  return (
+    <section className="blog-post-detail-section py-5 bg-light">
+      <div className="container">
+        <button className="btn btn-secondary mb-4 animate__animated animate__fadeInLeft" onClick={onBack}>
+          <i className="fas fa-arrow-left me-2"></i> Zurück zum Blog
         </button>
-        <button
-          onClick={handlePaymentSubmit}
-          disabled={isProcessing}
-          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-3 px-8 rounded-lg shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isProcessing ? 'İşleniyor...' : 'Siparişi Tamamla'}
-        </button>
+        <h2 className="display-4 fw-bold mb-4 text-dark animate__animated animate__fadeInDown">{post.title}</h2>
+        <p className="text-muted mb-4 animate__animated animate__fadeInUp">
+          <i className="fas fa-calendar-alt me-2"></i>{post.date} | <i className="fas fa-user me-2"></i>{post.author} | Serie: {post.series}
+        </p>
+        <img src={`https://placehold.co/800x450/0d6efd/ffffff?text=${encodeURIComponent(post.title)}`} alt={post.title} className="img-fluid rounded shadow-sm mb-4 animate__animated animate__zoomIn" />
+        <p className="lead text-muted mb-4 animate__animated animate__fadeInUp animate__delay-1s">
+          {post.content}
+        </p>
+        {/* More content can be added here */}
       </div>
     </section>
   );
 };
 
-// --- CampaignsPage Component ---
-const CampaignsPage = ({ campaigns }) => {
+// Podcasts Page Component
+const Podcasts = () => {
+  const podcastEpisodes = [
+    {
+      id: 1,
+      title: "DevOps im Mittelstand: Herausforderungen und Chancen",
+      description: "Ein Gespräch über die Implementierung von DevOps-Praktiken in kleinen und mittleren Unternehmen, die Vorteile der Cloud-Migration und wie man typische Fallstricke vermeidet.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", // Placeholder audio
+      date: "2025-06-25"
+    },
+    {
+      id: 2,
+      title: "Cloud-Sicherheit mit AWS: Best Practices für Ihr Unternehmen",
+      description: "Experten diskutieren die wichtigsten Aspekte der Cloud-Sicherheit auf der AWS-Plattform, einschließlich IAM, VPC-Sicherheit, Verschlüsselung und Compliance-Anforderungen.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", // Placeholder audio
+      date: "2025-06-18"
+    },
+    {
+      id: 3,
+      title: "Automatisierung mit Ansible und Terraform: Ein Deep Dive",
+      description: "Wie Ansible und Terraform zusammenarbeiten, um Ihre Infrastruktur effizient zu verwalten. Wir beleuchten die Synergien zwischen IaC und Konfigurationsmanagement.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", // Placeholder audio
+      date: "2025-06-10"
+    },
+    {
+      id: 4,
+      title: "Kubernetes im Praxiseinsatz: Skalierung und Resilienz",
+      description: "Praktische Einblicke in den Einsatz von Kubernetes für hochverfügbare und skalierbare Anwendungen. Fallstudien und bewährte Methoden.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3", // Placeholder audio
+      date: "2025-06-01"
+    }
+  ];
+
   return (
-    <section className="py-8">
-      <h2 className="text-3xl md:text-5xl font-extrabold text-center text-green-300 mb-10 tracking-wide drop-shadow-md">Güncel Kampanyalar</h2>
-      {campaigns.length === 0 ? (
-        <p className="text-center text-xl text-gray-400">Şu anda aktif kampanya bulunmamaktadır.</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-          {campaigns.map((campaign) => (
-            <CampaignCard key={campaign.id} campaign={campaign} />
+    <section className="podcasts-section py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Unsere Podcasts</h2>
+        <div className="row g-4">
+          {podcastEpisodes.map(episode => (
+            <div className="col-md-6 col-lg-4 animate__animated animate__fadeInUp" style={{animationDelay: `${0.2 * episode.id}s`}} key={episode.id}>
+              <div className="card h-100 shadow-sm border-0 transform-on-hover">
+                <div className="card-body">
+                  <h3 className="card-title fs-4 fw-bold mb-2">{episode.title}</h3>
+                  <p className="card-subtitle mb-2 text-muted">
+                    <i className="fas fa-calendar-alt me-2"></i>{episode.date}
+                  </p>
+                  <p className="card-text">{episode.description}</p>
+                  <audio controls className="w-100 mt-3">
+                    <source src={episode.audioUrl} type="audio/mpeg" />
+                    Ihr Browser unterstützt das Audio-Element nicht.
+                  </audio>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
-      )}
-    </section>
-  );
-};
-
-// --- CampaignCard Component ---
-const CampaignCard = ({ campaign }) => {
-  return (
-    <div className="bg-gray-800 rounded-2xl shadow-xl overflow-hidden transform hover:scale-105 transition duration-300 ease-in-out border border-gray-700 hover:border-blue-500 flex flex-col">
-      <img
-        src={campaign.image}
-        alt={campaign.title}
-        className="w-full h-48 object-cover rounded-t-xl border-b border-gray-700"
-        onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/600x400/4b5563/ffffff?text=${encodeURIComponent(campaign.title)}`; }}
-      />
-      <div className="p-6 flex flex-col justify-between flex-grow">
-        <h3 className="text-2xl font-bold text-green-200 mb-3 leading-tight">{campaign.title}</h3>
-        <p className="text-gray-300 text-base mb-4 flex-grow">{campaign.description}</p>
-        <a
-          href={campaign.link}
-          className="inline-block self-start bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition duration-300 ease-in-out transform hover:-translate-y-0.5 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Hemen İncele
-        </a>
       </div>
-    </div>
-  );
-};
-
-
-// --- OrderConfirmationPage Component ---
-const OrderConfirmationPage = ({ setCurrentPage }) => {
-  return (
-    <section className="py-8 max-w-xl mx-auto bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-700 text-center">
-      <h2 className="text-3xl md:text-4xl font-extrabold text-green-300 mb-6 drop-shadow-md">Siparişiniz Onaylandı!</h2>
-      <svg className="mx-auto text-green-500 w-24 h-24 mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-      </svg>
-      <p className="text-xl text-gray-300 mb-4">Teşekkür ederiz! Siparişiniz başarıyla alınmıştır.</p>
-      <p className="text-md text-gray-400 mb-8">Sipariş detayları e-posta adresinize gönderilmiştir.</p>
-      <button
-        onClick={() => setCurrentPage('home')}
-        className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-8 rounded-lg shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-      >
-        Ana Sayfaya Dön
-      </button>
     </section>
   );
 };
 
-
-// --- FormContainer Component for reusable styling ---
-const FormContainer = ({ children, title }) => (
-  <section className="py-8">
-    <div className="max-w-md mx-auto bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-700">
-      <h2 className="text-3xl md:text-4xl font-extrabold text-center text-green-300 mb-8 drop-shadow-md">{title}</h2>
-      {children}
-    </div>
-  </section>
-);
-
-// --- InputField Component for consistent input styling ---
-const InputField = ({ label, id, type, placeholder, value, onChange, required, error, name }) => (
-  <div>
-    <label className="block text-gray-300 text-lg font-bold mb-2" htmlFor={id}>
-      {label}
-    </label>
-    <input
-      type={type}
-      id={id}
-      name={name || id} // Use name prop if provided, otherwise fallback to id
-      className={`shadow-inner appearance-none border ${error ? 'border-red-500' : 'border-gray-600'} rounded-lg w-full py-3 px-4 text-gray-200 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500 bg-gray-700 placeholder-gray-500 transition duration-200 text-lg`}
-      placeholder={placeholder}
-      value={value}
-      onChange={onChange}
-      required={required}
-    />
-    {error && <p className="text-red-500 text-sm italic mt-2">{error}</p>}
-  </div>
-);
-
-
-// --- Registration Component ---
-const Registration = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const { handleRegister, setCurrentPage } = useContext(AppContext);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (!email || !password) {
-      setError('Lütfen tüm alanları doldurun.');
-      return;
-    }
-    // Basic email format validation
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        setError('Lütfen geçerli bir e-posta adresi girin.');
-        return;
-    }
-    // Password strength check (example)
-    if (password.length < 6) {
-        setError('Şifre en az 6 karakter olmalıdır.');
-        return;
-    }
-
-    try {
-      await handleRegister(email, password);
-      // Success message handled by App component
-    } catch (err) {
-      setError('Kayıt başarısız oldu. Lütfen tekrar deneyin.');
-    }
-  };
+// CiCdPipelineAnimation Component
+const CiCdPipelineAnimation = () => {
+  const pipelineSteps = [
+    { id: 1, name: "Code Commit", icon: "fas fa-code-branch", delay: "0.5s" },
+    { id: 2, name: "Build & Test", icon: "fas fa-hammer", delay: "1s" },
+    { id: 3, name: "Docker Image Build", icon: "fab fa-docker", delay: "1.5s" },
+    { id: 4, name: "Push to Registry", icon: "fas fa-upload", delay: "2s" },
+    { id: 5, name: "Deploy to Kubernetes", icon: "fas fa-server", delay: "2.5s" },
+    { id: 6, name: "Security Scan", icon: "fas fa-shield-alt", delay: "3s" },
+    { id: 7, name: "E2E Tests", icon: "fas fa-vial", delay: "3.5s" },
+    { id: 8, name: "Monitoring", icon: "fas fa-chart-line", delay: "4s" },
+  ];
 
   return (
-    <FormContainer title="Kayıt Ol">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <InputField
-          label="E-posta"
-          id="email"
-          type="email"
-          placeholder="eposta@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          error={error.includes('e-posta') ? error : ''}
-        />
-        <InputField
-          label="Şifre"
-          id="password"
-          type="password"
-          placeholder="Şifreniz"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          error={error.includes('Şifre') ? error : ''}
-        />
-        
-        <div className="flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 sm:space-x-4 mt-6">
-          <button
-            type="submit"
-            className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-3 px-6 rounded-lg shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-          >
-            Kayıt Ol
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentPage('login')}
-            className="inline-block align-baseline font-bold text-lg text-green-400 hover:text-green-300 transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 rounded-md p-2"
-          >
-            Hesabınız var mı? Giriş yapın
-          </button>
+    <section className="ci-cd-pipeline-section py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Unser CI/CD Pipeline</h2>
+        <p className="lead text-center text-muted mb-5 animate__animated animate__fadeInUp">
+          Ein Blick auf unseren automatisierten Software-Lieferprozess.
+        </p>
+        <div className="row justify-content-center g-4">
+          {pipelineSteps.map(step => (
+            <div className="col-md-3 col-lg-2 text-center animate__animated animate__zoomIn" style={{ animationDelay: step.delay }} key={step.id}>
+              <div className="card h-100 shadow-sm border-0 p-3">
+                <div className="card-body d-flex flex-column align-items-center justify-content-center">
+                  <i className={`${step.icon} fa-3x text-primary mb-3 animate__animated animate__bounce`}></i>
+                  <h5 className="card-title fw-bold">{step.name}</h5>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-      </form>
-    </FormContainer>
+        <div className="text-center mt-5">
+          <p className="fs-5 text-muted animate__animated animate__fadeInUp animate__delay-4s">
+            Dieser Prozess gewährleistet schnelle, zuverlässige und sichere Software-Bereitstellungen.
+          </p>
+        </div>
+      </div>
+    </section>
   );
 };
 
-// --- Login Component ---
-const Login = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const { handleLogin, setCurrentPage } = useContext(AppContext);
-  const [error, setError] = useState('');
+// Media Page Component
+const Media = ({ setCurrentPage }) => {
+  const images = [
+    "https://placehold.co/600x400/28a745/ffffff?text=Cloud+Infrastruktur",
+    "https://placehold.co/600x400/007bff/ffffff?text=DevOps+Automatisierung",
+    "https://placehold.co/600x400/6c757d/ffffff?text=Sicherheits+Audit",
+    "https://placehold.co/600x400/fd7e14/ffffff?text=Terraform+Code",
+    "https://placehold.co/600x400/6f42c1/ffffff?text=Kubernetes+Cluster",
+    "https://placehold.co/600x400/20c997/ffffff?text=Docker+Container"
+  ];
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (!email || !password) {
-      setError('Lütfen tüm alanları doldurun.');
-      return;
-    }
-    try {
-      await handleLogin(email, password);
-      // Success message handled by App component
-    } catch (err) {
-      setError('Giriş başarısız oldu. Geçersiz e-posta veya şifre.');
-    }
-  };
+  const videos = [
+    { title: "Einführung in AWS DevOps", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" }, // Rick Astley - Never Gonna Give You Up (Placeholder)
+    { title: "Unsere Cloud-Lösungen im Detail", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" }
+  ];
+
+  const devOpsTools = [
+    { name: "Terraform", icon: "fas fa-leaf", page: "terraformDetail", description: "Infrastruktur als Code" },
+    { name: "Ansible", icon: "fas fa-server", page: "ansibleDetail", description: "Automatisierung und Konfiguration" },
+    { name: "Helm", icon: "fas fa-ship", page: "helmDetail", description: "Kubernetes Paketmanager" },
+    { name: "Kubernetes", icon: "fas fa-dharmachakra", page: "kubernetesDetail", description: "Container-Orchestrierung" },
+    { name: "Docker", icon: "fab fa-docker", page: "dockerDetail", description: "Containerisierung" },
+    { name: "GitHub Actions", icon: "fab fa-github-alt", page: "githubActionsDetail", description: "CI/CD Workflows" }
+  ];
 
   return (
-    <FormContainer title="Giriş Yap">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <InputField
-          label="E-posta"
-          id="login-email"
-          type="email"
-          placeholder="eposta@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          error={error.includes('e-posta') ? error : ''}
-        />
-        <InputField
-          label="Şifre"
-          id="login-password"
-          type="password"
-          placeholder="Şifreniz"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          error={error.includes('şifre') ? error : ''}
-        />
-        
-        <div className="flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 sm:space-x-4 mt-6">
-          <button
-            type="submit"
-            className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-3 px-6 rounded-lg shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-          >
-            Giriş Yap
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentPage('register')}
-            className="inline-block align-baseline font-bold text-lg text-green-400 hover:text-green-300 transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 rounded-md p-2"
-          >
-            Hesabınız yok mu? Kayıt olun
-          </button>
+    <section className="media-section py-5 bg-white">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Unsere Medien & Tools</h2>
+
+        <h3 className="fs-2 fw-bold mb-4 text-primary animate__animated animate__fadeInLeft">Bildergalerie</h3>
+        <div className="row g-4 mb-5">
+          {images.map((src, index) => (
+            <div className="col-md-4 animate__animated animate__zoomIn" style={{animationDelay: `${0.2 * index}s`}} key={index}>
+              <img src={src} className="img-fluid rounded shadow-sm transform-on-hover" alt="Media" />
+            </div>
+          ))}
         </div>
-      </form>
-    </FormContainer>
+
+        <h3 className="fs-2 fw-bold mb-4 text-primary animate__animated animate__fadeInLeft">Videos</h3>
+        <div className="row g-4 mb-5">
+          {videos.map((video, index) => (
+            <div className="col-md-6 animate__animated animate__fadeInUp" style={{animationDelay: `${0.2 * index}s`}} key={index}>
+              <div className="card shadow-sm border-0 transform-on-hover">
+                <div className="card-body">
+                  <h4 className="card-title">{video.title}</h4>
+                  <div className="ratio ratio-16x9">
+                    <iframe src={video.url} title={video.title} allowFullScreen></iframe>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <h3 className="fs-2 fw-bold mb-4 text-primary animate__animated animate__fadeInLeft">DevOps Tools</h3>
+        <div className="row g-4">
+          {devOpsTools.map((tool, index) => (
+            <div className="col-md-4 animate__animated animate__fadeInUp" style={{animationDelay: `${0.2 * index}s`}} key={index}>
+              <div className="card h-100 shadow-sm border-0 transform-on-hover cursor-pointer" onClick={() => setCurrentPage(tool.page)}>
+                <div className="card-body text-center p-4">
+                  <i className={`${tool.icon} fa-4x text-success mb-3 animate__animated animate__pulse animate__infinite`}></i>
+                  <h4 className="card-title fs-4 fw-bold mb-2">{tool.name}</h4>
+                  <p className="card-text text-muted">{tool.description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* CI/CD Pipeline Animation Preview */}
+        <CiCdPipelineAnimation />
+
+      </div>
+    </section>
   );
 };
 
-// --- QuickViewModal Component ---
-const QuickViewModal = ({ product, onClose, addToCart }) => {
-  if (!product) return null; // Don't render if no product is selected
-
+// Terraform Detail Page
+const TerraformDetail = () => {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-lg w-full transform scale-95 opacity-0 animate-scale-in border border-gray-700 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 rounded-full p-2"
-          aria-label="Kapat"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-        </button>
-
-        <h2 className="text-3xl font-bold text-green-300 mb-6 text-center">{product.name}</h2>
-        
-        <div className="flex flex-col md:flex-row items-center justify-center md:space-x-8 space-y-6 md:space-y-0">
-          <img
-            src={product.image}
-            alt={product.name}
-            className="w-full md:w-1/2 h-64 object-cover rounded-xl border border-gray-700 shadow-lg"
-          />
-          <div className="flex flex-col items-center md:items-start text-center md:text-left">
-            <p className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400 mb-4 drop-shadow-md">{product.price.toFixed(2)} TL</p>
-            <p className="text-gray-300 text-base mb-6">
-                {product.description || 'Ürün Açıklaması Buraya Gelecek. Bu harika ürün, günlük ihtiyaçlarınızı karşılamak üzere tasarlanmıştır...'}
+    <section className="detail-page py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Terraform</h2>
+        <div className="row">
+          <div className="col-lg-8 mx-auto animate__animated animate__fadeInUp">
+            <img src="https://placehold.co/800x450/6f42c1/ffffff?text=Terraform+Infrastructure" alt="Terraform" className="img-fluid rounded shadow-sm mb-4" />
+            <p className="lead text-muted mb-4">
+              Terraform ist ein Open-Source-Tool für die Infrastruktur als Code (IaC). Es ermöglicht Ihnen, Cloud- und On-Premises-Ressourcen in einer deklarativen Konfigurationssprache zu definieren und bereitzustellen. Mit Terraform können Sie Ihre gesamte Infrastruktur versionieren, wiederverwenden und automatisieren.
             </p>
-            <button
-              onClick={() => { addToCart(product); onClose(); }}
-              className="bg-gradient-to-r from-green-600 to-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-xl hover:shadow-2xl transition duration-300 ease-in-out transform hover:-translate-y-1 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-            >
-              Sepete Ekle
-            </button>
+            <p className="text-muted">
+              Es unterstützt eine Vielzahl von Cloud-Anbietern (AWS, Azure, Google Cloud) und anderen Diensten, was es zu einem vielseitigen Werkzeug für die Verwaltung komplexer Umgebungen macht. Durch die Automatisierung der Infrastrukturbereitstellung reduziert Terraform manuelle Fehler und beschleunigt den Entwicklungsprozess.
+            </p>
+            <h3 className="fs-3 fw-bold mt-5 mb-3 text-primary">Vorteile:</h3>
+            <ul>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Infrastruktur als Code</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Multi-Cloud-Unterstützung</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Automatisierte Bereitstellung</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Versionskontrolle der Infrastruktur</li>
+            </ul>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 
-// Keyframes for modal animations (add these to your main CSS file or a style tag if not using build tools)
-/*
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+// Ansible Detail Page
+const AnsibleDetail = () => {
+  return (
+    <section className="detail-page py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Ansible</h2>
+        <div className="row">
+          <div className="col-lg-8 mx-auto animate__animated animate__fadeInUp">
+            <img src="https://placehold.co/800x450/dc3545/ffffff?text=Ansible+Automation" alt="Ansible" className="img-fluid rounded shadow-sm mb-4" />
+            <p className="lead text-muted mb-4">
+              Ansible ist ein Open-Source-Automatisierungs-Tool, das für Konfigurationsmanagement, Softwarebereitstellung und Orchestrierung verwendet wird. Es ist agentenlos, was bedeutet, dass keine spezielle Software auf den verwalteten Knoten installiert werden muss, was die Einrichtung und Wartung vereinfacht.
+            </p>
+            <p className="text-muted">
+              Mit einfachen YAML-Playbooks können Sie komplexe Automatisierungsaufgaben definieren, von der Serverkonfiguration bis zur Anwendungsbereitstellung. Ansible ist bekannt für seine Benutzerfreundlichkeit und seine Fähigkeit, schnell Ergebnisse zu liefern, was es zu einer beliebten Wahl für DevOps-Teams macht.
+            </p>
+            <h3 className="fs-3 fw-bold mt-5 mb-3 text-primary">Vorteile:</h3>
+            <ul>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Agentenlos</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Einfache YAML-Syntax</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Leistungsstarkes Konfigurationsmanagement</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Schnelle Implementierung</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
-@keyframes scale-in {
-  from { transform: scale(0.9) translateY(20px); opacity: 0; }
-  to { transform: scale(1) translateY(0); opacity: 1; }
-}
+// Helm Detail Page
+const HelmDetail = () => {
+  return (
+    <section className="detail-page py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Helm</h2>
+        <div className="row">
+          <div className="col-lg-8 mx-auto animate__animated animate__fadeInUp">
+            <img src="https://placehold.co/800x450/17a2b8/ffffff?text=Helm+Chart" alt="Helm" className="img-fluid rounded shadow-sm mb-4" />
+            <p className="lead text-muted mb-4">
+              Helm ist der Paketmanager für Kubernetes. Er hilft Ihnen, Kubernetes-Anwendungen zu definieren, zu installieren und zu aktualisieren. Mit Helm können Sie komplexe Anwendungen als Charts verpacken, die alle notwendigen Kubernetes-Ressourcen enthalten.
+            </p>
+            <p className="text-muted">
+              Helm vereinfacht die Bereitstellung und Verwaltung von Anwendungen in Kubernetes-Clustern erheblich. Es bietet Funktionen wie Versionskontrolle, Rollbacks und die einfache Freigabe von Anwendungen, was es zu einem unverzichtbaren Werkzeug für DevOps-Teams macht.
+            </p>
+            <h3 className="fs-3 fw-bold mt-5 mb-3 text-primary">Vorteile:</h3>
+            <ul>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Vereinfachte Anwendungsbereitstellung</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Versionskontrolle und Rollbacks</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Wiederverwendbare Charts</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Große Community und Chart-Repositorys</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
-.animate-fade-in {
-  animation: fade-in 0.3s ease-out forwards;
-}
+// Kubernetes Detail Page
+const KubernetesDetail = () => {
+  return (
+    <section className="detail-page py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Kubernetes</h2>
+        <div className="row">
+          <div className="col-lg-8 mx-auto animate__animated animate__fadeInUp">
+            <img src="https://placehold.co/800x450/007bff/ffffff?text=Kubernetes+Orchestration" alt="Kubernetes" className="img-fluid rounded shadow-sm mb-4" />
+            <p className="lead text-muted mb-4">
+              Kubernetes ist eine Open-Source-Plattform zur Automatisierung der Bereitstellung, Skalierung und Verwaltung von containerisierten Anwendungen. Es gruppiert Container, die eine Anwendung bilden, in logische Einheiten für eine einfache Verwaltung und Erkennung.
+            </p>
+            <p className="text-muted">
+              Als De-facto-Standard für die Container-Orchestrierung bietet Kubernetes eine robuste ve erweiterbare Plattform für den Betrieb von Microservices und komplexen Workloads in jeder Umgebung, sei es On-Premises, in der Cloud oder in Hybrid-Setups.
+            </p>
+            <h3 className="fs-3 fw-bold mt-5 mb-3 text-primary">Vorteile:</h3>
+            <ul>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Automatische Skalierung</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Selbstheilung</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Lastverteilung</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Portabilität über verschiedene Umgebungen</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
-.animate-scale-in {
-  animation: scale-in 0.3s ease-out forwards;
-}
+// Docker Detail Page
+const DockerDetail = () => {
+  return (
+    <section className="detail-page py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">Docker</h2>
+        <div className="row">
+          <div className="col-lg-8 mx-auto animate__animated animate__fadeInUp">
+            <img src="https://placehold.co/800x450/007bff/ffffff?text=Docker+Containerization" alt="Docker" className="img-fluid rounded shadow-sm mb-4" />
+            <p className="lead text-muted mb-4">
+              Docker ist eine Plattform für Entwickler und Systemadministratoren, um Anwendungen mit all ihren Abhängigkeiten in "Containern" zu entwickeln, bereitzustellen und auszuführen. Container sind leichtgewichtige, eigenständige, ausführbare Pakete von Software, die alles enthalten, was zur Ausführung einer Anwendung benötigt wird.
+            </p>
+            <p className="text-muted">
+              Durch die Containerisierung mit Docker wird die Konsistenz über verschiedene Umgebungen hinweg gewährleistet, von der Entwicklung bis zur Produktion. Dies vereinfacht den Bereitstellungsprozess erheblich und reduziert Kompatibilitätsprobleme.
+            </p>
+            <h3 className="fs-3 fw-bold mt-5 mb-3 text-primary">Vorteile:</h3>
+            <ul>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Konsistente Umgebungen</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Schnelle Bereitstellung</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Ressourcen-Effizienz</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Portabilität</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
-@keyframes bounce-slow {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
-}
+// GitHub Actions Detail Page
+const GithubActionsDetail = () => {
+  return (
+    <section className="detail-page py-5 bg-light">
+      <div className="container">
+        <h2 className="text-center display-4 fw-bold mb-5 text-dark animate__animated animate__fadeIn">GitHub Actions</h2>
+        <div className="row">
+          <div className="col-lg-8 mx-auto animate__animated animate__fadeInUp">
+            <img src="https://placehold.co/800x450/007bff/ffffff?text=GitHub+Actions+Workflow" alt="GitHub Actions" className="img-fluid rounded shadow-sm mb-4" />
+            <p className="lead text-muted mb-4">
+              GitHub Actions ist eine leistungsstarke CI/CD-Plattform, die es Ihnen ermöglicht, Automatisierungsworkflows direkt in Ihrem GitHub-Repository zu erstellen. Von der Code-Validierung über das Testen bis hin zur Bereitstellung – GitHub Actions bietet eine flexible und integrierte Lösung für Ihre DevOps-Anforderungen.
+            </p>
+            <p className="text-muted">
+              Mit einer Vielzahl von vorgefertigten Aktionen und der Möglichkeit, eigene Aktionen zu erstellen, können Sie maßgeschneiderte Pipelines für jede Art von Projekt entwickeln. Es integriert sich nahtlessly in das GitHub-Ökosystem und bietet eine hervorragende Sichtbarkeit und Kontrolle über Ihre Entwicklungsprozesse.
+            </p>
+            <h3 className="fs-3 fw-bold mt-5 mb-3 text-primary">Vorteile:</h3>
+            <ul>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Nahtlose Integration mit GitHub</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Flexible Workflow-Definitionen</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Große Community und Marktplatz für Aktionen</li>
+              <li><i className="fas fa-check-circle text-success me-2"></i> Kostenlose Nutzung für öffentliche Repositories</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
-.animate-bounce-slow {
-  animation: bounce-slow 2s infinite ease-in-out;
-}
-*/
+// Footer Component
+const Footer = () => {
+  return (
+    <footer className="bg-dark text-white text-center py-4 mt-auto shadow-lg">
+      <div className="container">
+        <p className="mb-0">&copy; 2025 Cloud DevOps Lösungen. Alle Rechte vorbehalten.</p>
+        <p className="mb-0">Entwickelt mit <i className="fas fa-heart text-danger animate__animated animate__heartBeat animate__infinite"></i> für moderne Cloud-Infrastrukturen.</p>
+      </div>
+    </footer>
+  );
+};
 
 export default App;
