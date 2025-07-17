@@ -17,7 +17,7 @@ export const SLIDE_DATA: SlideData[] = [
   {
     id: 1,
     layout: SlideLayout.Title,
-    title: 'CI/CD Motoru: Koddan Müşteriye Kesintisiz Değer Akışı',
+    title: 'CI/CD Motoru: Koddan Müşteriye Kesintisiz Değer Akışı yeni',
     subtitle: 'Modern Yazılım Geliştirmenin Kalbindeki Otomasyon ve Kültür',
   },
   {
