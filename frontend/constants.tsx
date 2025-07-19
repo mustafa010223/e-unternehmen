@@ -25,7 +25,7 @@ export const SLIDE_DATA: SlideData[] = [
   {
     id: 1,
     layout: SlideLayout.Title,
-    title: 'CI/CD Motoru: sunum esnasinda ci-cd sürecini göstermek icin degistirildi',
+    title: 'gatalatasaray',
     subtitle: 'Modern Yazılım Geliştirmenin Kalbindeki Otomasyon ve Kültür',
   },
   {
